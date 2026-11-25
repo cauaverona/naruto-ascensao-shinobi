@@ -9,7 +9,7 @@
 - A ficha tem 13 penteados, 14 cores de cabelo, 6 modelos de roupa, 14 cores de traje e 4 opções de cachecol, incluindo sem cachecol. Óculos, máscara, presilha e brinco têm acabamentos que podem ser escolhidos por amostras de cor.
 - A prévia pode ser girada para os quatro lados e mostra a caminhada sob demanda. Jaquetas de treino, coletes utilitários e camadas cruzadas foram desenhados para o protagonista com a [galeria oficial do anime](https://naruto-official.com/en/special/anime-gallery) e as [referências de vestuário shinobi](https://naruto-official.com/en/news/01_1429) como inspiração.
 - A cicatriz, os bigodes e as marcas vermelhas seguem os pixels da pele. Os detalhes dos trajes e do cachecol respeitam o contorno do personagem em repouso e andando.
-- Os visuais masculino e feminino têm traços faciais e formas de ombro próprios. Os 13 penteados substituem a silhueta do cabelo e funcionam nas quatro direções, em repouso e caminhando.
+- A opção **Feminino** tem um corte adicional, **Rabo lateral**. Os 13 cortes originais e o desenho do personagem continuam disponíveis com a mesma aparência.
 - A verificação local incluiu 24 testes automatizados, compilação e testes no Chrome de criação, retomada, exclusão e layout com 390 px de largura.
 
 ## O que mudou na 0.3.1
