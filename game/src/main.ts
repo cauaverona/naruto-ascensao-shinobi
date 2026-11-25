@@ -1,12 +1,13 @@
 // Ascensão Shinobi v0.3.0 — controlador principal: telas, exploração, aulas, treino, noite e menu.
 import './styles.css';
 import { CHARACTERS, CLASSMATES, type MapId, type Period } from './data/characters';
+import { accessorySet, OUTFITS, SCARVES } from './data/appearance';
 import { origin, clanByName } from './data/clans';
 import { ACADEMY_STATS, combatPower, maxVitals, type Stat } from './data/stats';
 import { LESSONS, PERIODS, WEEKDAYS, EXAM_DAY, ITEMS, QUESTIONS } from './data/academy';
 import { JUTSUS, castChance } from './data/jutsus';
-import { newCampaign, addLog, type Campaign, type Profile, type Settings } from './state/campaign';
-import { readSlot, writeSlot, SLOT_COUNT, slotKey } from './state/save';
+import { newCampaign, addLog, LOOK_DEFAULTS, type Campaign, type Profile, type Settings } from './state/campaign';
+import { deleteSlot, readSlot, writeSlot, LAST_SLOT_KEY, SLOT_COUNT } from './state/save';
 import { applyTraining, learn, level, clampVitals, practice, statCost, train } from './systems/progression';
 import { bond, bondLabel } from './systems/relations';
 import { dueEvents, resolveEvent, sleep, startAfternoon, spendAction } from './systems/world';
@@ -15,7 +16,7 @@ import { KunaiGame, StrikeGame, ChakraGame, SealsGame, grade, type Minigame } fr
 import { BattleScene } from './scenes/battle';
 import { makeFighter, startBattle } from './combat/engine';
 import { randomSeed, Rng } from './core/rng';
-import { drawActor, portrait, idlePose, spritesReady, clothes, skinSet, hairSet, trimSet, bandSet, CUTS, ACCESSORIES, MARKS, type Actor, type Dir } from './render/sprites';
+import { drawActor, portrait, idlePose, spritesReady, clothes, skinSet, hairSet, trimSet, bandSet, CUTS, FEMININE_CUT, ACCESSORIES, MARKS, type Actor, type Dir } from './render/sprites';
 import { px } from './render/gfx';
 import { audio } from './audio';
 import { blocked, type GameMap } from './render/maps/types';
@@ -51,6 +52,12 @@ function show(id: Screen) {
 document.querySelectorAll<HTMLButtonElement>('[data-back]').forEach((b) => (b.onclick = () => (b.dataset.back === 'title' ? openTitle() : openSlots())));
 
 function safeRead(i: number) { try { return readSlot(localStorage, i); } catch { return null; } }
+function lastPlayedSlot() {
+  try {
+    const value = Number(localStorage.getItem(LAST_SLOT_KEY) ?? -1);
+    return Number.isInteger(value) && value >= 0 && value < SLOT_COUNT ? value : -1;
+  } catch { return -1; }
+}
 
 // Menu principal navegável por teclado, mouse e toque.
 let menuIndex = 0;
@@ -65,13 +72,17 @@ function setCurrent(box: HTMLElement, i: number) {
 function openTitle() {
   show('title');
   c = null;
-  const lastSlot = Number(localStorage.getItem('ascensao.ultimo') ?? -1);
+  const lastSlot = lastPlayedSlot();
   const info = lastSlot >= 0 ? safeRead(lastSlot) : null;
   const box = $('mainmenu');
   box.replaceChildren();
   const add = (label: string, fn: () => void) => { const b = document.createElement('button'); b.textContent = label; b.onclick = fn; b.onmouseenter = () => setCurrent(box, menuButtons(box).indexOf(b)); box.append(b); };
-  if (info?.kind === 'ok') add('Continuar', () => startGame(lastSlot, info.campaign, info.raw));
-  add('Jogar', openSlots);
+  if (info?.kind === 'ok') add('Continuar', () => {
+    const current = safeRead(lastSlot);
+    if (current?.kind === 'ok') startGame(lastSlot, current.campaign, current.raw);
+    else openSlots('A última jornada não está mais disponível.');
+  });
+  add('Jogar', () => openSlots());
   add(`Som: ${audio.enabled ? 'ligado' : 'desligado'}`, () => { audio.toggleAll(); openTitle(); });
   add('Controles', () => toastTitle('Andar: WASD ou setas · Interagir: E ou Enter · Menu: Esc · No celular, use o direcional e o botão A.'));
   setCurrent(box, 0);
@@ -82,15 +93,35 @@ function toastTitle(text: string) {
   p.textContent = text;
 }
 
-function openSlots() {
+const deleteDialog = $<HTMLDialogElement>('delete-save');
+let pendingDelete: { index: number; raw: string } | null = null;
+
+deleteDialog.addEventListener('close', () => {
+  const pending = pendingDelete;
+  pendingDelete = null;
+  if (deleteDialog.returnValue !== 'delete' || !pending) return;
+  const { index, raw } = pending;
+  const result = deleteSlot(localStorage, index, raw);
+  const message = result.ok ? `Save da jornada ${index + 1} excluído.`
+    : result.reason === 'conflict' ? 'A jornada mudou em outra aba. Confira antes de tentar excluir de novo.'
+    : 'O navegador não conseguiu excluir o save.';
+  openSlots(message, index);
+});
+
+function openSlots(message = 'Saves da v0.2.0 são atualizados automaticamente.', focusSlot = 0) {
   show('slots');
   c = null;
+  $('slot-status').textContent = message;
   const box = $('slots');
   box.replaceChildren();
   for (let i = 0; i < SLOT_COUNT; i++) {
     const info = safeRead(i);
+    const card = document.createElement('article');
+    card.className = 'slot-card';
     const b = document.createElement('button');
+    b.type = 'button';
     b.className = 'slot';
+    b.dataset.slot = String(i);
     const face = document.createElement('canvas');
     face.width = 36; face.height = 39;
     b.append(face);
@@ -98,7 +129,7 @@ function openSlots() {
     add('small', `Jornada ${i + 1}`);
     if (!info || info.kind === 'broken') {
       add('strong', 'Indisponível'); add('span', info?.kind === 'broken' ? `Save ilegível: ${info.error}` : 'Armazenamento bloqueado');
-      b.disabled = !info;
+      b.disabled = true;
     } else if (info.kind === 'empty') {
       b.classList.add('empty'); add('strong', 'Vazio'); add('span', 'Criar personagem');
       b.onclick = () => openCreate(i);
@@ -109,40 +140,59 @@ function openSlots() {
       add('strong', s.profile.name);
       add('span', `${s.rank} · Dia ${s.day} · ${PERIODS[s.period]}`);
       add('span', `${s.profile.clan} · ${Math.max(1, Math.round(s.playtime / 60))} min de jogo`);
-      b.onclick = () => startGame(i, s, info.raw);
+      b.onclick = () => {
+        const current = safeRead(i);
+        if (current?.kind === 'ok') startGame(i, current.campaign, current.raw);
+        else openSlots('A jornada mudou. Confira os saves disponíveis.', i);
+      };
     }
-    b.onmouseenter = () => setCurrent(box, menuButtons(box).indexOf(b));
-    box.append(b);
-    if (info?.kind === 'broken' && info.raw) {
+    card.append(b);
+    if (info && info.raw !== null) {
+      const raw = info.raw;
       const del = document.createElement('button');
-      del.type = 'button'; del.className = 'ghost del'; del.textContent = 'Apagar save ilegível';
-      del.onclick = (e) => { e.stopPropagation(); localStorage.removeItem(slotKey(i)); openSlots(); };
-      b.append(del);
+      del.type = 'button'; del.className = 'ghost slot-delete'; del.textContent = 'Excluir save';
+      del.setAttribute('aria-label', `Excluir save da jornada ${i + 1}`);
+      del.onclick = () => {
+        pendingDelete = { index: i, raw };
+        $('delete-target').textContent = `Jornada ${i + 1} · ${info.kind === 'ok' ? info.campaign.profile.name : 'Save ilegível'}`;
+        deleteDialog.returnValue = 'cancel';
+        deleteDialog.showModal();
+      };
+      card.append(del);
     }
+    box.append(card);
   }
-  setCurrent(box, 0);
-  menuButtons(box)[0]?.focus();
+  for (const b of menuButtons(box)) {
+    b.onmouseenter = b.onfocus = () => setCurrent(box, menuButtons(box).indexOf(b));
+  }
+  (box.querySelector<HTMLButtonElement>(`[data-slot="${focusSlot}"]:not(:disabled)`) ?? menuButtons(box)[0] ?? $('s-slots').querySelector('button'))?.focus();
 }
 
 // ——— Criação de personagem ———
 type Key = keyof Profile | 'difficulty' | 'fidelity';
-interface Opt { key: Key; label: string; values: readonly string[]; describe?: (v: string) => string }
+interface Opt { key: Key; label: string; values: readonly string[]; colors?: Record<string, string | readonly string[]>; describe?: (v: string) => string }
+const palette = (key: Key, label: string, colors: NonNullable<Opt['colors']>): Opt => ({ key, label, colors, values: Object.keys(colors) });
 const LABELS: Record<string, string> = { facil: 'Fácil', normal: 'Normal', dificil: 'Difícil', fiel: 'Fiel ao anime', equilibrado: 'Equilibrado', alternativo: 'Mundo alternativo' };
 const CREATE_TABS: { id: string; label: string; opts: Opt[] }[] = [
   { id: 'body', label: 'Corpo', opts: [
     { key: 'sex', label: 'Sexo', values: ['Masculino', 'Feminino'] },
-    { key: 'skin', label: 'Pele', values: Object.keys(skinSet) },
+    palette('skin', 'Tom de pele', skinSet),
     { key: 'mark', label: 'Marca no rosto', values: MARKS },
-    { key: 'accessory', label: 'Acessório', values: ACCESSORIES },
   ] },
   { id: 'hair', label: 'Cabelo', opts: [
-    { key: 'hair', label: 'Cor', values: Object.keys(hairSet) },
     { key: 'cut', label: 'Penteado', values: CUTS },
+    palette('hair', 'Cor do cabelo', hairSet),
   ] },
   { id: 'outfit', label: 'Roupa', opts: [
-    { key: 'coat', label: 'Traje', values: Object.keys(clothes) },
-    { key: 'trim', label: 'Cachecol', values: Object.keys(trimSet) },
-    { key: 'band', label: 'Pano da bandana', values: Object.keys(bandSet), describe: () => 'Aparece na testa quando você se forma. Também colore a faixa na testa, se escolher esse acessório.' },
+    { key: 'outfit', label: 'Modelo', values: OUTFITS },
+    palette('coat', 'Cor do traje', clothes),
+    { key: 'scarf', label: 'Cachecol', values: SCARVES },
+    { ...palette('trim', 'Cor do tecido', trimSet), describe: () => 'Colore o cachecol e os detalhes de tecido do traje.' },
+  ] },
+  { id: 'accessory', label: 'Acessórios', opts: [
+    { key: 'accessory', label: 'Acessório', values: ACCESSORIES },
+    { ...palette('accessoryTone', 'Acabamento', accessorySet), describe: () => 'Muda a cor dos óculos, da máscara, do brinco e da presilha.' },
+    { ...palette('band', 'Cor da faixa', bandSet), describe: () => 'Colore a faixa opcional e a bandana que você recebe na graduação.' },
   ] },
   { id: 'world', label: 'Mundo', opts: [
     { key: 'difficulty', label: 'Dificuldade', values: ['facil', 'normal', 'dificil'], describe: (v) => ({ facil: 'Adversários mais fracos.', normal: 'O equilíbrio pensado para a campanha.', dificil: 'Adversários batem mais forte.' }[v] ?? '') },
@@ -151,91 +201,156 @@ const CREATE_TABS: { id: string; label: string; opts: Opt[] }[] = [
 ];
 const DEFAULTS: Record<Key, string> = {
   name: '', sex: 'Masculino', skin: 'Dourada', hair: 'Preto', cut: 'Curto', coat: 'Índigo', difficulty: 'normal', fidelity: 'equilibrado',
-  trim: 'Laranja', accessory: 'Nenhum', mark: 'Nenhuma', band: 'Azul',
+  ...LOOK_DEFAULTS,
   // O destino do personagem é sorteado quando a jornada começa.
   village: 'Sortear', clan: 'Sortear', element: 'Sortear', talent: 'Sortear', attribute: 'Sortear', past: 'Sortear',
 };
 let form: Record<Key, string> = { ...DEFAULTS };
+function availableChoices(option: Opt): readonly string[] {
+  return option.key === 'cut' && form.sex === 'Feminino' ? [...option.values, FEMININE_CUT] : option.values;
+}
+
+function setCreateChoice(key: Key, value: string) {
+  form[key] = value;
+  if (key === 'sex' && value !== 'Feminino' && form.cut === FEMININE_CUT) form.cut = DEFAULTS.cut;
+}
 let createTab = 0, createRow = 0, previewDir = 0;
+let previewWalking = false, previewDirty = true;
 const DESTINY_NOTE = 'Seu clã, aldeia, afinidade, talento e histórico são sorteados quando a jornada começa. Só a aparência é escolha sua.';
 const PREVIEW_DIRS: Dir[] = ['down', 'right', 'up', 'left'];
+const PREVIEW_LABELS = ['Frente', 'Perfil direito', 'Costas', 'Perfil esquerdo'];
 
 function readForm(): { p: Profile; s: Settings } {
   const { difficulty, fidelity, ...rest } = form;
   return { p: { ...(rest as unknown as Profile), name: $<HTMLInputElement>('f_name').value.trim() }, s: { difficulty: difficulty as Settings['difficulty'], fidelity: fidelity as Settings['fidelity'] } };
 }
+function selectCreateTab(i: number, focus = false) {
+  createTab = i;
+  createRow = 0;
+  renderCreate();
+  if (focus) $('ctabs').querySelector<HTMLButtonElement>('[aria-selected="true"]')?.focus();
+}
+
 function renderCreate() {
   const tabs = $('ctabs');
   tabs.replaceChildren(...CREATE_TABS.map((t, i) => {
     const b = document.createElement('button');
-    b.type = 'button'; b.role = 'tab'; b.textContent = t.label; b.setAttribute('aria-selected', String(i === createTab));
-    b.onclick = () => { createTab = i; createRow = 0; renderCreate(); };
+    b.type = 'button'; b.role = 'tab'; b.textContent = t.label; b.id = `look-tab-${t.id}`;
+    b.setAttribute('aria-selected', String(i === createTab));
+    b.setAttribute('aria-controls', 'rows');
+    b.tabIndex = i === createTab ? 0 : -1;
+    b.onclick = () => selectCreateTab(i, true);
     return b;
   }));
   const rows = $('rows');
   rows.replaceChildren();
   const tab = CREATE_TABS[createTab];
+  rows.setAttribute('role', 'tabpanel');
+  rows.setAttribute('aria-labelledby', `look-tab-${tab.id}`);
   tab.opts.forEach((o, i) => {
-    const r = document.createElement('div');
+    const r = document.createElement('fieldset');
     r.className = 'opt';
-    r.setAttribute('aria-current', String(i === createRow));
-    const name = document.createElement('span'); name.textContent = o.label;
-    const cyc = document.createElement('div'); cyc.className = 'cycle';
-    const mk = (dirn: -1 | 1) => { const b = document.createElement('button'); b.type = 'button'; b.setAttribute('aria-label', `${o.label}: ${dirn < 0 ? 'anterior' : 'próximo'}`); b.innerHTML = `<i class="tri ${dirn < 0 ? 'l' : 'r'}"></i>`; b.onclick = () => { createRow = i; cycleOpt(dirn); }; return b; };
-    const val = document.createElement('b'); val.textContent = LABELS[form[o.key]] ?? form[o.key];
-    cyc.append(mk(-1), val, mk(1));
-    r.append(name, cyc);
-    r.onmouseenter = () => { createRow = i; markRow(); };
+    const name = document.createElement('legend');
+    name.textContent = o.label;
+    const val = document.createElement('b'); val.className = 'opt-value';
+    name.append(val);
+    const group = document.createElement('div');
+    group.className = o.colors ? 'swatches' : 'look-choices';
+    for (const value of availableChoices(o)) {
+      const b = document.createElement('button');
+      const label = LABELS[value] ?? value;
+      b.type = 'button';
+      b.dataset.choice = value;
+      if (o.colors) {
+        b.className = 'swatch';
+        b.title = label;
+        b.setAttribute('aria-label', label);
+        const colors = o.colors[value];
+        b.style.setProperty('--swatch', typeof colors === 'string' ? colors : `linear-gradient(135deg, ${colors[2]} 0 28%, ${colors[1]} 29% 68%, ${colors[0]} 69%)`);
+      } else {
+        b.className = 'look-choice';
+        b.textContent = label;
+      }
+      b.onclick = () => { createRow = i; setCreateChoice(o.key, value); updateCreate(); };
+      group.append(b);
+    }
+    r.addEventListener('focusin', () => { createRow = i; updateCreate(); });
+    r.append(name, group);
     rows.append(r);
   });
   const d = document.createElement('p'); d.className = 'desc'; d.id = 'optDesc';
   rows.append(d);
-  markRow();
+  updateCreate();
   $('origin').textContent = DESTINY_NOTE;
 }
-function markRow() {
+function updateCreate() {
   const opts = CREATE_TABS[createTab].opts;
-  [...$('rows').querySelectorAll('.opt')].forEach((r, k) => r.setAttribute('aria-current', String(k === createRow)));
+  $('rows').querySelectorAll('.opt').forEach((r, i) => {
+    const opt = opts[i], value = form[opt.key];
+    r.setAttribute('data-current', String(i === createRow));
+    r.querySelector('.opt-value')!.textContent = LABELS[value] ?? value;
+    r.querySelectorAll<HTMLButtonElement>('[data-choice]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.choice === value)));
+  });
   const o = opts[createRow];
   $('optDesc').textContent = o?.describe?.(form[o.key]) ?? '';
+  previewDirty = true;
 }
 function cycleOpt(dirn: -1 | 1) {
   const o = CREATE_TABS[createTab].opts[createRow];
-  const i = o.values.indexOf(form[o.key]);
-  form[o.key] = o.values[(i + dirn + o.values.length) % o.values.length];
-  renderCreate();
+  const values = availableChoices(o);
+  const i = values.indexOf(form[o.key]);
+  setCreateChoice(o.key, values[(i + dirn + values.length) % values.length]);
+  updateCreate();
+  $('rows').querySelectorAll('.opt')[createRow]?.querySelector<HTMLButtonElement>('[aria-pressed="true"]')?.focus();
 }
 function drawPreview() {
+  if (!previewWalking && !previewDirty) return;
+  previewDirty = false;
   const g2 = $<HTMLCanvasElement>('preview').getContext('2d')!;
   g2.clearRect(0, 0, 96, 104);
   g2.imageSmoothingEnabled = false;
   const dir = PREVIEW_DIRS[previewDir % 4];
-  const p = readForm().p;
-  g2.save(); g2.scale(2, 2); drawActor(g2, 24, 48, { role: 'player', look: { ...p } }, dir, Math.floor(clock * 4) % 4); g2.restore();
+  g2.save(); g2.scale(2, 2); drawActor(g2, 24, 47, { role: 'player', look: readForm().p }, dir, previewWalking ? Math.floor(clock * 6) % 4 : -1); g2.restore();
 }
 function openCreate(i: number) {
   slot = i;
   form = { ...DEFAULTS };
   $<HTMLInputElement>('f_name').value = '';
   createTab = 0; createRow = 0;
+  previewWalking = false;
+  $('preview-motion').setAttribute('aria-pressed', 'false');
+  rotatePreview(-previewDir);
   show('create');
   renderCreate();
   $('f_name').focus();
 }
-$('rotL').onclick = () => (previewDir = (previewDir + 3) % 4);
-$('rotR').onclick = () => (previewDir = (previewDir + 1) % 4);
+function rotatePreview(step: number) {
+  previewDir = (previewDir + step + 4) % 4;
+  $('preview-facing').textContent = PREVIEW_LABELS[previewDir];
+  previewDirty = true;
+}
+$('rotL').onclick = () => rotatePreview(-1);
+$('rotR').onclick = () => rotatePreview(1);
+$('preview-motion').onclick = () => {
+  previewWalking = !previewWalking;
+  $('preview-motion').setAttribute('aria-pressed', String(previewWalking));
+  previewDirty = true;
+};
 $('f_name').oninput = () => ($('origin').textContent = DESTINY_NOTE);
 $('randomize').onclick = () => {
-  for (const t of CREATE_TABS) for (const o of t.opts) if (t.id !== 'world' && o.key !== 'sex') form[o.key] = o.values[Math.floor(Math.random() * o.values.length)];
-  renderCreate();
+  for (const t of CREATE_TABS) for (const o of t.opts) if (t.id !== 'world' && o.key !== 'sex') {
+    const values = availableChoices(o);
+    setCreateChoice(o.key, values[Math.floor(Math.random() * values.length)]);
+  }
+  updateCreate();
 };
 $('form').onsubmit = (e) => {
   e.preventDefault();
   const { p, s } = readForm();
   if (!p.name) { $('f_name').focus(); $<HTMLInputElement>('f_name').placeholder = 'Seu shinobi precisa de um nome'; return; }
-  let raw: string | null = null;
-  try { raw = localStorage.getItem(slotKey(slot)); } catch { raw = null; }
-  startGame(slot, newCampaign(p, s, randomSeed()), raw);
+  const current = safeRead(slot);
+  if (current?.kind !== 'empty') { openSlots('Esta jornada não está mais vazia ou acessível.', slot); return; }
+  startGame(slot, newCampaign(p, s, randomSeed()), null);
 };
 
 // ——— Salvamento ———
@@ -253,7 +368,7 @@ document.addEventListener('visibilitychange', () => { if (document.hidden && dir
 // ——— Início da campanha ———
 function startGame(i: number, camp: Campaign, raw: string | null) {
   slot = i; c = camp; snapshot = raw; blockedWrites = false; busy = false; lessonMode = false;
-  try { localStorage.setItem('ascensao.ultimo', String(i)); } catch { /* sem armazenamento */ }
+  try { localStorage.setItem(LAST_SLOT_KEY, String(i)); } catch { /* sem armazenamento */ }
   show('game');
   shownMap = null;
   enterMap(c.map, c.x, c.y, c.dir, false);
@@ -1149,24 +1264,35 @@ function markChoice(i: number) {
 function menuKeys(e: KeyboardEvent, box: HTMLElement) {
   const k = e.key.toLowerCase();
   const list = menuButtons(box);
+  const active = document.activeElement;
+  if (active instanceof HTMLButtonElement && !box.contains(active) && active.closest('#s-slots') && [' ', 'enter'].includes(k)) return;
   if (DIRS[k] === 'up' || DIRS[k] === 'left') { e.preventDefault(); setCurrent(box, menuIndex - 1); list[menuIndex]?.focus(); audio.sfx('hover'); }
   else if (DIRS[k] === 'down' || DIRS[k] === 'right') { e.preventDefault(); setCurrent(box, menuIndex + 1); list[menuIndex]?.focus(); audio.sfx('hover'); }
-  else if ((k === 'enter' || k === 'e' || k === ' ') && !e.repeat) { e.preventDefault(); list[menuIndex]?.click(); }
+  else if ((k === 'enter' || k === 'e' || k === ' ') && !e.repeat) {
+    e.preventDefault();
+    (active instanceof HTMLButtonElement && list.includes(active) ? active : list[menuIndex])?.click();
+  }
 }
 function createKeys(e: KeyboardEvent) {
   const k = e.key;
   if (document.activeElement === $('f_name') && !['ArrowUp', 'ArrowDown', 'Enter', 'Escape'].includes(k)) return;
   const opts = CREATE_TABS[createTab].opts;
-  if (k === 'ArrowUp') { e.preventDefault(); $('f_name').blur(); createRow = (createRow + opts.length - 1) % opts.length; markRow(); audio.sfx('hover'); }
-  else if (k === 'ArrowDown') { e.preventDefault(); $('f_name').blur(); createRow = (createRow + 1) % opts.length; markRow(); audio.sfx('hover'); }
+  const tabFocus = $('ctabs').contains(document.activeElement);
+  if ((tabFocus && k === 'ArrowLeft') || k === 'q' || k === 'PageUp') { e.preventDefault(); selectCreateTab((createTab + CREATE_TABS.length - 1) % CREATE_TABS.length, true); }
+  else if ((tabFocus && k === 'ArrowRight') || k === 'e' || k === 'PageDown') { e.preventDefault(); selectCreateTab((createTab + 1) % CREATE_TABS.length, true); }
+  else if (k === 'ArrowUp' || k === 'ArrowDown') {
+    e.preventDefault();
+    const step = k === 'ArrowUp' ? -1 : 1;
+    createRow = (createRow + step + opts.length) % opts.length;
+    $('rows').querySelectorAll('.opt')[createRow]?.querySelector<HTMLButtonElement>('[aria-pressed="true"]')?.focus();
+    audio.sfx('hover');
+  }
   else if (k === 'ArrowLeft' || k === 'a') { e.preventDefault(); cycleOpt(-1); audio.sfx('tick'); }
   else if (k === 'ArrowRight' || k === 'd') { e.preventDefault(); cycleOpt(1); audio.sfx('tick'); }
-  else if (k === 'q' || k === 'PageUp') { e.preventDefault(); createTab = (createTab + CREATE_TABS.length - 1) % CREATE_TABS.length; createRow = 0; renderCreate(); }
-  else if (k === 'e' || k === 'PageDown') { e.preventDefault(); createTab = (createTab + 1) % CREATE_TABS.length; createRow = 0; renderCreate(); }
   else if (k === 'Escape') { e.preventDefault(); openSlots(); }
 }
 window.addEventListener('keydown', (e) => {
-  if (e.ctrlKey || e.metaKey || e.altKey) return;
+  if (e.ctrlKey || e.metaKey || e.altKey || deleteDialog.open) return;
   const k = e.key.toLowerCase();
   if (screen === 'title') { menuKeys(e, $('mainmenu')); return; }
   if (screen === 'slots') { if (k === 'escape') openTitle(); else menuKeys(e, $('slots')); return; }

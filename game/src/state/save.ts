@@ -6,6 +6,7 @@ import { baseStats, maxVitals, STATS, type StatBlock } from '../data/stats';
 
 export const SLOT_COUNT = 3;
 export const slotKey = (i: number) => `ascensao.campanha.${i}`;
+export const LAST_SLOT_KEY = 'ascensao.ultimo';
 
 export interface StorageLike {
   getItem(k: string): string | null;
@@ -77,7 +78,7 @@ export type SlotInfo =
 export function readSlot(store: StorageLike, i: number): SlotInfo {
   let raw: string | null;
   try { raw = store.getItem(slotKey(i)); } catch { return { kind: 'broken', raw: null, error: 'Leitura indisponível' }; }
-  if (!raw) return { kind: 'empty', raw: null };
+  if (raw === null) return { kind: 'empty', raw: null };
   try { return { kind: 'ok', raw, campaign: decode(raw) }; } catch (e) { return { kind: 'broken', raw, error: (e as Error).message }; }
 }
 
@@ -96,6 +97,21 @@ export function writeSlot(store: StorageLike, i: number, c: Campaign, snapshot: 
   } catch {
     return { ok: false, reason: 'storage' };
   }
+}
+
+/** Remove somente a revisão que o jogador confirmou, inclusive se estiver ilegível. */
+export function deleteSlot(store: StorageLike, i: number, snapshot: string):
+  { ok: true } | { ok: false; reason: 'conflict' | 'storage' } {
+  try {
+    if (store.getItem(slotKey(i)) !== snapshot) return { ok: false, reason: 'conflict' };
+    store.removeItem(slotKey(i));
+  } catch {
+    return { ok: false, reason: 'storage' };
+  }
+  try {
+    if (store.getItem(LAST_SLOT_KEY) === String(i)) store.removeItem(LAST_SLOT_KEY);
+  } catch { /* Um atalho sem campanha é ignorado na tela inicial. */ }
+  return { ok: true };
 }
 
 export function memoryStore(): StorageLike & { data: Map<string, string> } {

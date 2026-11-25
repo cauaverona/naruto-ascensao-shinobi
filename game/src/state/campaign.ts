@@ -1,6 +1,7 @@
 // Estado completo de uma campanha. Tudo aqui é serializável e versionado (schema).
 import { baseStats, maxVitals, type StatBlock, type Stat, type Rank } from '../data/stats';
-import { CHARACTERS, type MapId, type Period } from '../data/characters';
+import { CHARACTERS, type Look, type MapId, type Period } from '../data/characters';
+import { WARDROBE_DEFAULTS } from '../data/appearance';
 import { clanByName, CLANS, VILLAGES, PASTS, TALENTS, ATTRIBUTE_PICKS } from '../data/clans';
 import { ELEMENTS } from '../data/stats';
 import type { EraId } from '../data/academy';
@@ -9,17 +10,17 @@ import { Rng } from '../core/rng';
 export const SCHEMA = 3;
 /** Porta de casa, na casa vermelha do sul da Rua da Academia. */
 export const HOME_SPOT = { x: 117, y: 437 };
-export const GAME_VERSION = '0.3.1';
+export const GAME_VERSION = '0.3.2';
 
-export interface Profile {
+export interface Profile extends Look {
   name: string; sex: string; village: string; clan: string; element: string;
   talent: string; attribute: string; past: string;
   skin: string; hair: string; cut: string; coat: string;
   trim: string; accessory: string; mark: string; band: string;
 }
 
-/** Valores de aparência adicionados na v0.3.1; saves anteriores recebem estes padrões. */
-export const LOOK_DEFAULTS = { trim: 'Laranja', accessory: 'Nenhum', mark: 'Nenhuma', band: 'Azul' };
+/** Saves anteriores recebem os padrões que preservam o visual da versão original. */
+export const LOOK_DEFAULTS = { trim: 'Laranja', accessory: 'Nenhum', mark: 'Nenhuma', band: 'Azul', ...WARDROBE_DEFAULTS };
 
 export interface Settings {
   difficulty: 'facil' | 'normal' | 'dificil';
@@ -119,7 +120,7 @@ export function rollOrigin(p: Profile, rng: Rng) {
 
 export function newCampaign(input: Profile, settings: Settings, seed: number): Campaign {
   const rng = new Rng(seed);
-  const p = { ...input };
+  const p = { ...LOOK_DEFAULTS, ...input };
   rollOrigin(p, rng);
   const stats = baseStats(2);
   const add = (k: string, v: number) => { if (k in stats) stats[k as Stat] += v; };

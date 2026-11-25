@@ -19,7 +19,7 @@
       <p class="tagline">Da Academia Ninja até virar lenda</p>
     </div>
     <nav class="mainmenu" id="mainmenu" aria-label="Menu principal"></nav>
-    <p class="foot">v0.3.1 · Era da Academia · Jogo de fã sem fins lucrativos</p>
+    <p class="foot">v0.3.2 · Era da Academia · Jogo de fã sem fins lucrativos</p>
   </section>
 
   <!-- Seleção de jornada -->
@@ -27,21 +27,34 @@
     <div class="panel wood wide">
       <h2 class="ptitle">Escolha sua jornada</h2>
       <div id="slots" class="slots"></div>
-      <div class="hint"><button class="ghost" data-back="title">Voltar</button><span>Saves da v0.2.0 são atualizados automaticamente.</span></div>
+      <div class="hint"><button class="ghost" data-back="title">Voltar</button><span id="slot-status" role="status"></span></div>
     </div>
   </section>
+
+  <dialog id="delete-save" class="panel wood save-dialog" aria-labelledby="delete-title" aria-describedby="delete-warning">
+    <h2 id="delete-title" class="ptitle">Excluir save</h2>
+    <p id="delete-target"></p>
+    <p id="delete-warning">O progresso desta jornada será excluído permanentemente deste navegador.</p>
+    <form method="dialog" class="actions">
+      <button class="ghost" value="cancel" autofocus>Cancelar</button>
+      <button class="danger" value="delete">Excluir save</button>
+    </form>
+  </dialog>
 
   <!-- Criação de personagem -->
   <section id="s-create" class="layer dim" hidden>
     <form id="form" class="panel wood create" autocomplete="off">
       <div class="pedestal">
         <canvas id="preview" width="96" height="104" aria-label="Prévia do personagem"></canvas>
-        <div class="turn"><button type="button" class="ghost sm" id="rotL" aria-label="Girar para a esquerda"><i class="tri l"></i></button><button type="button" class="ghost sm" id="rotR" aria-label="Girar para a direita"><i class="tri r"></i></button></div>
-        <p id="origin" class="origin"></p>
+        <div class="preview-controls">
+          <div class="turn"><button type="button" class="ghost sm" id="rotL" aria-label="Girar para a esquerda"><i class="tri l"></i></button><span id="preview-facing" aria-live="polite">Frente</span><button type="button" class="ghost sm" id="rotR" aria-label="Girar para a direita"><i class="tri r"></i></button></div>
+          <button type="button" class="ghost sm" id="preview-motion" aria-pressed="false">Ver caminhada</button>
+        </div>
       </div>
       <div class="sheet">
         <h2 class="ptitle">Ficha de matrícula</h2>
         <label class="namefield">Nome<input id="f_name" maxlength="16" placeholder="Digite seu nome" required></label>
+        <p id="origin" class="origin"></p>
         <div class="tabs" role="tablist" id="ctabs"></div>
         <div id="rows" class="rows"></div>
         <div class="actions"><button type="button" class="ghost" data-back="slots">Voltar</button><button type="button" class="ghost" id="randomize">Sortear aparência</button><button class="primary" type="submit">Começar jornada</button></div>

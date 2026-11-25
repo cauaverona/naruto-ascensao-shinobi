@@ -1,7 +1,16 @@
 # Status do desenvolvimento
 
-**Versão atual:** 0.3.1, Era da Academia (Etapas 1 e 2 do [Projeto Mestre](Projeto_Mestre.md)).
-**Jogar:** abra `naruto_ascensao_v0.3.1.html` no navegador. Funciona offline.
+**Versão atual:** 0.3.2, Era da Academia (Etapas 1 e 2 do [Projeto Mestre](Projeto_Mestre.md)).
+**Jogar:** abra `naruto_ascensao_v0.3.2.html` no navegador. Funciona offline.
+
+## O que mudou na 0.3.2
+
+- A lista de jornadas permite excluir um save com confirmação. A exclusão preserva os demais slots e recusa um save alterado em outra aba desde que a confirmação foi aberta.
+- A ficha tem 13 penteados, 14 cores de cabelo, 6 modelos de roupa, 14 cores de traje e 4 opções de cachecol, incluindo sem cachecol. Óculos, máscara, presilha e brinco têm acabamentos que podem ser escolhidos por amostras de cor.
+- A prévia pode ser girada para os quatro lados e mostra a caminhada sob demanda. Jaquetas de treino, coletes utilitários e camadas cruzadas foram desenhados para o protagonista com a [galeria oficial do anime](https://naruto-official.com/en/special/anime-gallery) e as [referências de vestuário shinobi](https://naruto-official.com/en/news/01_1429) como inspiração.
+- A cicatriz, os bigodes e as marcas vermelhas seguem os pixels da pele. Os detalhes dos trajes e do cachecol respeitam o contorno do personagem em repouso e andando.
+- A opção **Feminino** tem um corte adicional, **Rabo lateral**. Os 13 cortes originais e o desenho do personagem continuam disponíveis com a mesma aparência.
+- A verificação local incluiu 24 testes automatizados, compilação e testes no Chrome de criação, retomada, exclusão e layout com 390 px de largura.
 
 ## O que mudou na 0.3.1
 
