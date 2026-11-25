@@ -1,4 +1,5 @@
 // Minijogos de treino. Cada um devolve uma nota de 0 a 1 que vira evolução de atributo e domínio.
+import type { Tactic } from '../data/squad';
 import { SEALS } from '../data/academy';
 import { px, ovalpx } from '../render/gfx';
 
@@ -64,13 +65,16 @@ export class KunaiGame implements Minigame {
 
 /** Troncos: golpes no tempo certo, a zona boa encolhe a cada acerto. */
 export class StrikeGame implements Minigame {
-  title = 'Troncos de treino';
-  help = 'Aperte quando o marcador estiver na faixa dourada. 6 golpes.';
   done = false; score = 0;
   private pos = 0; private dir = 1; private hits = 0; private total = 0; private zone = 0.2; private shake = 0; private last = '';
-  constructor(private power: number) {}
+  constructor(private power: number, public title = 'Troncos de treino',
+    public help = 'Aperte quando o marcador estiver na faixa dourada. 6 golpes.', private target: 'log' | 'bell' = 'log',
+    private tactic?: Tactic) {
+    if (tactic === 'rastreio') this.zone = 0.27;
+  }
   update(dt: number) {
-    this.pos += this.dir * dt * (0.9 + this.hits * 0.12);
+    const tempo = this.tactic === 'bloqueio' ? 0.72 : 0.9;
+    this.pos += this.dir * dt * (tempo + this.hits * 0.12);
     if (this.pos > 1) { this.pos = 1; this.dir = -1; }
     if (this.pos < 0) { this.pos = 0; this.dir = 1; }
     this.shake = Math.max(0, this.shake - dt * 30);
@@ -78,9 +82,20 @@ export class StrikeGame implements Minigame {
   render(g: G, w: number, h: number) {
     g.fillStyle = 'rgba(14,21,23,.55)'; g.fillRect(0, 0, w, h);
     const cx = w / 2, base = Math.round(h * 0.5), s = this.shake ? Math.round((Math.random() - 0.5) * this.shake) : 0;
-    px(g, cx - 10 + s, base - 56, 20, 60, '#6d5338'); px(g, cx - 8 + s, base - 56, 5, 58, '#9b7a50'); ovalpx(g, cx + s, base - 56, 10, 3, '#c9a56c');
-    px(g, cx - 10 + s, base - 38, 20, 4, '#d9c08c');
-    for (let i = 0; i < this.hits; i++) px(g, cx - 6 + s + (i % 3) * 4, base - 30 + Math.floor(i / 3) * 6, 3, 1, '#3d2c1e');
+    if (this.target === 'bell') {
+      for (const x of [cx - 13, cx + 13]) {
+        px(g, x, base - 55, 2, 19, '#966749');
+        ovalpx(g, x + s, base - 29, 8, 9, '#b98642');
+        px(g, x - 3 + s, base - 33, 4, 6, '#f0cd75');
+        px(g, x - 2 + s, base - 19, 4, 3, '#805936');
+      }
+    } else {
+      px(g, cx - 10 + s, base - 56, 20, 60, '#6d5338');
+      px(g, cx - 8 + s, base - 56, 5, 58, '#9b7a50');
+      ovalpx(g, cx + s, base - 56, 10, 3, '#c9a56c');
+      px(g, cx - 10 + s, base - 38, 20, 4, '#d9c08c');
+      for (let i = 0; i < this.hits; i++) px(g, cx - 6 + s + (i % 3) * 4, base - 30 + Math.floor(i / 3) * 6, 3, 1, '#3d2c1e');
+    }
     const bw = Math.min(260, w - 40), bx = Math.round(cx - bw / 2), by = base + 20;
     panel(g, bx, by, bw, 12);
     const zw = Math.round(bw * this.zone), zx = Math.round(cx - zw / 2);
@@ -91,13 +106,14 @@ export class StrikeGame implements Minigame {
   press(down: boolean) {
     if (!down || this.done) return;
     const d = Math.abs(this.pos - 0.5);
-    const q = d < this.zone / 4 ? 1 : d < this.zone / 2 ? 0.65 : 0;
-    this.last = q === 1 ? 'Golpe perfeito!' : q ? 'Bom golpe' : 'Errou o tempo';
+    const covered = this.tactic === 'distracao' && this.hits === 0;
+    const q = d < this.zone / 4 ? 1 : d < this.zone / 2 ? 0.65 : covered ? 0.4 : 0;
+    this.last = q === 1 ? 'Tempo perfeito!' : q === 0.4 ? 'Seu colega cobriu a abertura' : q ? 'Boa aproximação' : 'Errou o tempo';
     if (q) { this.shake = 6 + this.power * 0.5; this.zone = Math.max(0.08, this.zone - 0.02); }
     this.total += q; this.hits++;
     if (this.hits >= 6) { this.done = true; this.score = this.total / 6; }
   }
-  status() { return `Golpe ${Math.min(6, this.hits + 1)}/6`; }
+  status() { return `Tentativa ${Math.min(6, this.hits + 1)}/6`; }
 }
 
 /** Meditação: segure para subir o chakra e mantenha-o dentro da faixa que se move. */

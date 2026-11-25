@@ -22,6 +22,16 @@ export function decode(raw: string): Campaign {
   if (s.schema !== SCHEMA) throw new Error('Formato incompatível');
   validate(s);
   s.profile = { ...LOOK_DEFAULTS, ...s.profile };
+  s.version = GAME_VERSION;
+  // NPCs acrescentados ao mesmo formato estrutural preservam a progressão dos já existentes.
+  for (const [id, initial] of Object.entries(npcInitial())) {
+    if (s.npcs[id]) continue;
+    s.npcs[id] = initial;
+    if (initial.rank === 'Estudante da Academia' && s.events?.['exame-colegas'] && s.flags && !s.flags[`exame:${id}`]) {
+      s.flags[`exame:${id}`] = 'aprovado';
+      initial.rank = 'Genin';
+    }
+  }
   return s as Campaign;
 }
 

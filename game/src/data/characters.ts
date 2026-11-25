@@ -51,6 +51,32 @@ function stats(over: Partial<StatBlock>): StatBlock {
   return { ...baseStats(1), ...over };
 }
 
+function student(id: string, name: string, clan: string, look: Look, seat: [number, number],
+  training: [number, number], strength: Stat, values: [number, number, number], goal: string): CharacterDef {
+  const [aggression, cunning, caution] = values;
+  return {
+    id, name, clan, look: { scarf: 'Sem cachecol', ...look }, role: 'player', age: 12,
+    rank: 'Estudante da Academia', affinities: [], stats: stats({ [strength]: 5, Chakra: 3, Vitalidade: 3 }),
+    jutsus: { henge: 45 + cunning * 35, kawarimi: 45 + caution * 35, bunshin: 62 + cunning * 25 },
+    personality: { aggression, cunning, caution, traits: [goal] }, goals: [goal], habits: { [strength]: 0.22 },
+    practice: { bunshin: 1.1 }, classmate: true,
+    schedule: {
+      0: { map: 'sala', x: seat[0], y: seat[1], dir: 'up' },
+      1: { map: 'campo', x: training[0], y: training[1], dir: 'down' },
+    },
+  };
+}
+
+function teacher(id: string, name: string, clan: string, look: Look, goal: string, age: number): CharacterDef {
+  return {
+    id, name, clan, look: { outfit: 'Colete de campo', scarf: 'Sem cachecol', ...look }, role: 'player',
+    age, rank: 'Jōnin', original: id === 'naomi', affinities: [], classmate: false, schedule: {},
+    stats: { ...baseStats(8), Percepção: 10 }, jutsus: { henge: 95, kawarimi: 95, bunshin: 95 },
+    personality: { aggression: 0.48, cunning: 0.8, caution: 0.58, traits: [goal] },
+    goals: [goal], habits: {},
+  };
+}
+
 export const CHARACTERS: Record<string, CharacterDef> = {
   iruka: {
     id: 'iruka', name: 'Iruka', role: 'iruka', age: 23, rank: 'Chūnin', clan: 'Umino', affinities: [],
@@ -128,6 +154,37 @@ export const CHARACTERS: Record<string, CharacterDef> = {
       0: { map: 'sala', x: 284, y: 168, dir: 'up' },
       1: { map: 'campo', x: 300, y: 300, dir: 'up', route: [[300, 300], [340, 300]] },
     },
+  },
+  ino: student('ino', 'Ino', 'Yamanaka',
+    { skin: 'Clara', hair: 'Loiro', cut: 'Rabo lateral', coat: 'Roxo', outfit: 'Traje leve' },
+    [120, 138], [380, 256], 'Inteligência', [0.56, 0.74, 0.45], 'Liderar a própria equipe'),
+  shikamaru: student('shikamaru', 'Shikamaru', 'Nara',
+    { skin: 'Dourada', hair: 'Preto', cut: 'Rabo alto', coat: 'Folha', outfit: 'Jaqueta de treino' },
+    [120, 170], [151, 260], 'Inteligência', [0.2, 0.95, 0.72], 'Resolver problemas com o menor esforço'),
+  choji: student('choji', 'Chōji', 'Akimichi',
+    { skin: 'Clara', hair: 'Castanho', cut: 'Ondulado', coat: 'Musgo', outfit: 'Colete de campo' },
+    [360, 136], [160, 306], 'Resistência', [0.45, 0.32, 0.62], 'Proteger os amigos'),
+  kiba: student('kiba', 'Kiba', 'Inuzuka',
+    { skin: 'Bronzeada', hair: 'Castanho', cut: 'Espetado', coat: 'Cinza', mark: 'Marcas vermelhas', outfit: 'Jaqueta de treino' },
+    [360, 168], [501, 282], 'Velocidade', [0.85, 0.4, 0.22], 'Aprimorar o faro em parceria com Akamaru'),
+  hinata: student('hinata', 'Hinata', 'Hyūga',
+    { skin: 'Pálida', hair: 'Preto', cut: 'Franja', coat: 'Branco', trim: 'Roxo', outfit: 'Jaqueta de treino' },
+    [196, 199], [276, 259], 'Controle de chakra', [0.37, 0.64, 0.82], 'Ganhar confiança no próprio estilo de luta'),
+  shino: student('shino', 'Shino', 'Aburame',
+    { skin: 'Dourada', hair: 'Preto', cut: 'Curto', coat: 'Musgo', scarf: 'Gola enrolada', accessory: 'Óculos', outfit: 'Capa curta' },
+    [284, 199], [550, 316], 'Percepção', [0.31, 0.85, 0.77], 'Observar o terreno antes de agir'),
+  kakashi: teacher('kakashi', 'Kakashi', 'Hatake', { skin: 'Clara', hair: 'Prateado', cut: 'Espetado', coat: 'Folha', accessory: 'Máscara' }, 'Ensinar o valor da equipe', 26),
+  asuma: teacher('asuma', 'Asuma', 'Sarutobi', { skin: 'Bronzeada', hair: 'Preto', cut: 'Espetado', coat: 'Musgo', band: 'Preto' }, 'Ensinar a proteger os companheiros', 27),
+  kurenai: teacher('kurenai', 'Kurenai', 'Yūhi', { skin: 'Pálida', hair: 'Preto', cut: 'Longo', coat: 'Branco', trim: 'Vermelho', outfit: 'Túnica cruzada', band: 'Vermelho' }, 'Treinar a atenção aos detalhes', 27),
+  naomi: teacher('naomi', 'Naomi', 'Sem clã', { skin: 'Morena', hair: 'Castanho', cut: 'Trança', coat: 'Índigo' }, 'Preparar a equipe para patrulhar Konoha', 28),
+  maki: {
+    id: 'maki', name: 'Maki', clan: 'Sem clã', role: 'player', age: 15, rank: 'Genin', original: true,
+    look: { skin: 'Oliva', hair: 'Chocolate', cut: 'Meio preso', coat: 'Terracota',
+      outfit: 'Jaqueta de treino', scarf: 'Lenço curto', trim: 'Jade', band: 'Verde' },
+    affinities: [], stats: stats({ Vitalidade: 2, Chakra: 3, Resistência: 2, Velocidade: 3, Taijutsu: 3, Bukijutsu: 2 }),
+    jutsus: { bunshin: 38, kawarimi: 42 },
+    personality: { aggression: 0.52, cunning: 0.53, caution: 0.68, traits: ['metódica', 'protetora do posto'] },
+    goals: ['Preparar equipes novas para a ronda'], habits: {}, schedule: {}, classmate: false,
   },
   gen: {
     id: 'gen', name: 'Sr. Gen', role: 'gen', age: 58, rank: 'Civil', clan: 'Sem clã', affinities: [], original: true,

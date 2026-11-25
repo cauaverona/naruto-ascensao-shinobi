@@ -98,6 +98,7 @@ export const WORLD_EVENTS: WorldEvent[] = [
         // Na fidelidade máxima, Naruto só passa se o jogador mudou o rumo dele de verdade.
         if (id === 'naruto' && c.settings.fidelity === 'fiel' && !((c.flags['treino-naruto'] as number) >= 3)) pass = false;
         c.flags[`exame:${id}`] = pass ? 'aprovado' : 'reprovado';
+        if (pass) c.npcs[id].rank = 'Genin';
       }
       return c.flags['exame:naruto'] === 'aprovado' ? 'naruto-aprovado' : 'canon';
     },
@@ -156,24 +157,38 @@ export const WORLD_EVENTS: WorldEvent[] = [
     outcomes: { oculto: { apply: (c) => { c.flags['mizuki-oculto'] = true; c.flags['naruto-kage-bunshin'] = false; } } },
   },
   {
-    id: 'formacao-equipes', title: 'Formação das equipes Genin', phase: 'dawn', window: [EXAM_DAY + 1, 99], involves: CLASSMATES,
+    id: 'formacao-equipes', title: 'Formação das equipes Genin', phase: 'dawn', window: [EXAM_DAY + 1, Infinity], involves: CLASSMATES,
     requires: (c) => c.rank === 'Genin' && !f(c, 'equipe'),
-    resolve: (c) => {
+    resolve: (c, rng) => {
       const passed = (id: string) => String(c.flags[`exame:${id}`] ?? '').startsWith('aprovado');
-      const team7 = ['naruto', 'sasuke', 'sakura'].every(passed);
-      let team: string[];
+      const canonical = ['naruto', 'sasuke', 'sakura'];
+      const intact = canonical.every(passed);
+      const shuffleTeams = c.settings.fidelity === 'alternativo';
+      let members: string[];
       let outcome: string;
-      if (team7) {
-        team = ['player', ...['emi', 'daichi'].filter(passed)];
-        outcome = 'canon';
-      } else if (!passed('naruto') && passed('sasuke') && passed('sakura')) {
-        team = ['player', 'sasuke', 'sakura'];
+      const openingInTeam7 = !passed('naruto') && passed('sasuke') && passed('sakura');
+      const fillTeam7 = openingInTeam7 && !shuffleTeams && (c.settings.fidelity === 'fiel' || rng.chance(0.68));
+      if (fillTeam7) {
+        members = ['sasuke', 'sakura'];
+        c.flags.sensei = 'kakashi';
         outcome = 'jogador-time7';
       } else {
-        team = ['player', ...CLASSMATES.filter((id) => passed(id) && id !== 'naruto')].slice(0, 3);
-        outcome = 'alternativa';
+        const eligible = CLASSMATES.filter((id) => !intact || shuffleTeams || !canonical.includes(id));
+        const pool = eligible.filter(passed);
+        const reserves = eligible.filter((id) => !passed(id));
+        members = [];
+        while (members.length < 2) {
+          const from = pool.length ? pool : reserves;
+          const id = from.splice(rng.int(0, from.length - 1), 1)[0];
+          members.push(id);
+          if (!passed(id)) c.flags[`exame:${id}`] = 'aprovado na repescagem';
+        }
+        const mentors = intact && !shuffleTeams ? ['asuma', 'kurenai', 'naomi'] : ['kakashi', 'asuma', 'kurenai', 'naomi'];
+        c.flags.sensei = rng.pick(mentors);
+        outcome = intact && !shuffleTeams ? 'canon' : 'alternativa';
       }
-      c.flags.equipe = team.join(',');
+      for (const id of CLASSMATES) if (passed(id)) c.npcs[id].rank = 'Genin';
+      c.flags.equipe = ['player', ...members].join(',');
       c.flags['academia-concluida'] = true;
       return outcome;
     },

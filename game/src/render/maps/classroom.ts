@@ -46,7 +46,9 @@ export function buildClassroom(): GameMap {
 
   mb.item(240, 112, lecternArt()); mb.wall(220, 92, 40, 20);
   for (const y of [130, 162]) for (const x of [196, 240, 284]) { mb.item(x, y, deskArt()); mb.wall(x - 18, y - 16, 36, 10); }
-  for (const x of [120, 360]) for (const y of [130, 162]) { mb.item(x, y, deskArt()); mb.wall(x - 18, y - 16, 36, 10); }
+  for (const x of [120, 360]) for (const y of [130, 162, 191]) { mb.item(x, y, deskArt()); mb.wall(x - 18, y - 16, 36, 10); }
+
+  for (const x of [196, 284]) { mb.item(x, 191, deskArt()); mb.wall(x - 18, 175, 36, 10); }
 
   return {
     id: 'sala', name: 'Sala de aula de Iruka', region: 'Academia Ninja · Konohagakure', w: W, h: H, ground, interior: true,

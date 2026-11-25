@@ -2,6 +2,7 @@
 // Cada rodada os dois lados escolhem a ação às cegas; a ordem de execução vem da iniciativa.
 // Distância em três zonas, clones ilusórios, substituição oculta, disfarce, defesa, foco de chakra
 // e armas com estoque. A IA recebe só informação pública (ver ai.ts).
+import { DUEL_STYLES } from './styles';
 import { Rng } from '../core/rng';
 import { JUTSUS, castChance } from '../data/jutsus';
 import { maxVitals, type StatBlock } from '../data/stats';
@@ -36,6 +37,7 @@ export interface Fighter {
   stamina: number; staminaMax: number;
   jutsus: Record<string, number>;
   items: { kunai: number; shuriken: number };
+  damageReduction: number;
   status: Status;
   /** Multiplicador de dano (dificuldade). */
   power: number;
@@ -62,7 +64,7 @@ export type Ev =
   | { t: 'move'; who: number; distance: Zone; dash?: boolean }
   | { t: 'throw'; who: number; weapon: 'kunai' | 'shuriken' }
   | { t: 'strike'; who: number }
-  | { t: 'hit'; who: number; amount: number; crit: boolean }
+  | { t: 'hit'; who: number; amount: number; crit: boolean; guarded: boolean }
   | { t: 'miss'; who: number }
   | { t: 'clone-pop'; who: number }
   | { t: 'substitute'; who: number }
@@ -70,6 +72,7 @@ export type Ev =
   | { t: 'disguise'; who: number }
   | { t: 'reveal'; who: number }
   | { t: 'seals'; who: number }
+  | { t: 'technique'; who: number; jutsu: string }
   | { t: 'fail'; who: number; jutsu: string }
   | { t: 'focus'; who: number; amount: number }
   | { t: 'defend'; who: number }
@@ -84,7 +87,7 @@ export function freshStatus(): Status {
 export interface FighterInput {
   id: string; name: string; role: SpriteRole; look?: Look; stats: StatBlock; jutsus: Record<string, number>;
   items?: { kunai: number; shuriken: number }; vitals?: { hp: number; chakra: number; stamina: number };
-  power?: number; personality?: Personality;
+  power?: number; personality?: Personality; damageReduction?: number;
 }
 
 export function makeFighter(input: FighterInput, side: 0 | 1): Fighter {
@@ -95,7 +98,7 @@ export function makeFighter(input: FighterInput, side: 0 | 1): Fighter {
     hp: input.vitals?.hp ?? m.hp, hpMax: m.hp, chakra: input.vitals?.chakra ?? m.chakra, chakraMax: m.chakra,
     stamina: input.vitals?.stamina ?? m.stamina, staminaMax: m.stamina,
     jutsus: { ...input.jutsus }, items: { ...(input.items ?? { kunai: 6, shuriken: 10 }) }, status: freshStatus(),
-    power: input.power ?? 1, personality: input.personality, knowledge: [], used: {},
+    damageReduction: input.damageReduction ?? 0, power: input.power ?? 1, personality: input.personality, knowledge: [], used: {},
   };
 }
 
@@ -118,9 +121,11 @@ export function available(b: Battle, side: 0 | 1): { action: Action; ok: boolean
   out.push({ action: { type: 'focus' }, ok: me.chakra < me.chakraMax, why: 'Chakra cheio' });
   for (const id of Object.keys(me.jutsus)) {
     const j = JUTSUS[id];
-    if (!j || j.era !== 'academia') continue;
+    if (!j || !['academia', 'classico'].includes(j.era)) continue;
     const active = (j.effect === 'substitution' && me.status.substitution) || (j.effect === 'disguise' && me.status.disguised);
-    out.push({ action: { type: 'jutsu', id }, ok: me.chakra >= j.chakraCost && !active, why: active ? 'Já está ativo' : 'Chakra insuficiente' });
+    const inRange = b.distance >= j.range[0] && b.distance <= j.range[1];
+    out.push({ action: { type: 'jutsu', id }, ok: me.chakra >= j.chakraCost && !active && inRange,
+      why: active ? 'Já está ativo' : !inRange ? 'Fora do alcance' : 'Chakra insuficiente' });
   }
   return out;
 }
@@ -174,7 +179,8 @@ export function resolveRound(b: Battle, actions: [Action, Action]): Ev[] {
 function act(b: Battle, side: 0 | 1, a: Action, rng: Rng, ev: Ev[]) {
   const me = b.fighters[side];
   const foe = b.fighters[side === 0 ? 1 : 0];
-  ev.push({ t: 'act', who: side, label: actionLabel(a) });
+  const label = a.type === 'taijutsu' ? DUEL_STYLES[me.id]?.strike ?? actionLabel(a) : actionLabel(a);
+  ev.push({ t: 'act', who: side, label });
   const cost = STAMINA_COST[a.type] ?? 0;
   const exhausted = me.stamina < cost;
   me.stamina = Math.max(0, me.stamina - cost);
@@ -248,6 +254,10 @@ function castJutsu(b: Battle, side: 0 | 1, id: string, rng: Rng, ev: Ev[]) {
   const j = JUTSUS[id];
   const mastery = me.jutsus[id] ?? 0;
   if (!j || me.chakra < j.chakraCost) { ev.push({ t: 'text', text: `${me.name} não tem chakra suficiente.` }); return; }
+  if (b.distance < j.range[0] || b.distance > j.range[1]) {
+    ev.push({ t: 'text', text: `${j.name} está fora de alcance.` });
+    return;
+  }
   me.chakra -= j.chakraCost;
   ev.push({ t: 'seals', who: side });
   b.lastPublic[side] = 'seals';
@@ -256,7 +266,7 @@ function castJutsu(b: Battle, side: 0 | 1, id: string, rng: Rng, ev: Ev[]) {
     return;
   }
   if (j.effect === 'clones') {
-    const count = 1 + (mastery >= 45 ? 1 : 0) + (mastery >= 80 ? 1 : 0);
+    const count = (id === 'kage-bunshin' ? 2 : 1) + (mastery >= 45 ? 1 : 0) + (mastery >= 80 ? 1 : 0);
     me.status.clones = count;
     ev.push({ t: 'clones', who: side, count });
     b.lastPublic[side] = 'clones';
@@ -267,6 +277,10 @@ function castJutsu(b: Battle, side: 0 | 1, id: string, rng: Rng, ev: Ev[]) {
     me.status.disguised = true;
     ev.push({ t: 'disguise', who: side });
     b.lastPublic[side] = 'disguise';
+  } else if (j.effect === 'damage') {
+    ev.push({ t: 'technique', who: side, jutsu: id });
+    attack(b, side, 'jutsu', (j.power ?? 12) + me.stats.Ninjutsu, b.distance === 1 ? 0.8 : 0.68, rng, ev);
+    b.lastPublic[side] = 'attack';
   }
 }
 
@@ -274,7 +288,7 @@ function learnTech(f: Fighter, tech: string) {
   if (!f.knowledge.includes(tech)) f.knowledge.push(tech);
 }
 
-function attack(b: Battle, side: 0 | 1, kind: 'taijutsu' | 'kunai' | 'shuriken', raw: number, baseHit: number, rng: Rng, ev: Ev[]) {
+function attack(b: Battle, side: 0 | 1, kind: 'taijutsu' | 'kunai' | 'shuriken' | 'jutsu', raw: number, baseHit: number, rng: Rng, ev: Ev[]) {
   const me = b.fighters[side];
   const foe = b.fighters[side === 0 ? 1 : 0];
   let crit = false;
@@ -317,10 +331,10 @@ function attack(b: Battle, side: 0 | 1, kind: 'taijutsu' | 'kunai' | 'shuriken',
   if (foe.status.defending) dmg *= 0.5;
   if (foe.status.focused) dmg *= 1.25;
   if (kind === 'shuriken') dmg = dmg * (b.distance === 2 ? 1.1 : 1);
-  const amount = Math.max(1, Math.round(dmg));
+  const amount = Math.max(1, Math.round(dmg * (1 - foe.damageReduction)));
   foe.hp = Math.max(0, foe.hp - amount);
   if (foe.status.disguised) { foe.status.disguised = false; ev.push({ t: 'reveal', who: foe.side }); }
-  ev.push({ t: 'hit', who: foe.side, amount, crit });
+  ev.push({ t: 'hit', who: foe.side, amount, crit, guarded: foe.status.defending });
   if (foe.hp <= 0) {
     b.over = { winner: side, reason: 'ko' };
     ev.push({ t: 'end', winner: side, reason: 'ko' });
@@ -332,7 +346,7 @@ function attack(b: Battle, side: 0 | 1, kind: 'taijutsu' | 'kunai' | 'shuriken',
 function maybeCounter(b: Battle, defender: Fighter, attacker: Fighter, kind: string, rng: Rng, ev: Ev[]) {
   if (!defender.status.defending || kind !== 'taijutsu' || b.over || b.distance !== 0) return;
   if (defender.stats.Taijutsu < attacker.stats.Taijutsu - 1 || !rng.chance(0.35)) return;
-  const amount = Math.max(1, Math.round((2 + defender.stats.Taijutsu * 0.8) * defender.power));
+  const amount = Math.max(1, Math.round((2 + defender.stats.Taijutsu * 0.8) * defender.power * (1 - attacker.damageReduction)));
   attacker.hp = Math.max(0, attacker.hp - amount);
   ev.push({ t: 'counter', who: defender.side, amount });
   if (attacker.hp <= 0) {

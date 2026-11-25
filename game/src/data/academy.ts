@@ -10,7 +10,7 @@ export const ITEMS: Record<string, Item> = {
 
 export const ERAS = [
   { id: 'academia', name: 'Academia Ninja', open: true },
-  { id: 'classico', name: 'Naruto Clássico', open: false },
+  { id: 'classico', name: 'Naruto Clássico', open: true },
   { id: 'timeskip', name: 'Timeskip', open: false },
   { id: 'shippuden', name: 'Início de Shippuden', open: false },
   { id: 'lendas', name: 'Ascensão das Lendas', open: false },
@@ -23,6 +23,12 @@ export const PERIODS = ['Manhã', 'Tarde', 'Noite'] as const;
 export const WEEKDAYS = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado', 'Domingo'];
 /** Dia do exame de graduação. */
 export const EXAM_DAY = 10;
+export const EXAM_MINIMUM = 46;
+
+export function graduationGrade(mastery: number, seals: number, written: number, control: number) {
+  const points = Math.min(100, Math.round(mastery * 0.50 + seals * 32 + written * 18 + Math.min(control, 10)));
+  return { points, pass: mastery > 0 && points >= EXAM_MINIMUM };
+}
 /** Ações de treino disponíveis em cada tarde. */
 export const AFTERNOON_ACTIONS = 3;
 

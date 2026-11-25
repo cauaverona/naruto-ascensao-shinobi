@@ -1,18 +1,28 @@
-// Ascensão Shinobi v0.3.0 — controlador principal: telas, exploração, aulas, treino, noite e menu.
+// Controlador principal de telas, exploração e campanha.
 import './styles.css';
 import { CHARACTERS, CLASSMATES, type MapId, type Period } from './data/characters';
 import { accessorySet, OUTFITS, SCARVES } from './data/appearance';
 import { origin, clanByName } from './data/clans';
 import { ACADEMY_STATS, combatPower, maxVitals, type Stat } from './data/stats';
-import { LESSONS, PERIODS, WEEKDAYS, EXAM_DAY, ITEMS, QUESTIONS } from './data/academy';
-import { JUTSUS, castChance } from './data/jutsus';
-import { newCampaign, addLog, LOOK_DEFAULTS, type Campaign, type Profile, type Settings } from './state/campaign';
+import { LESSONS, PERIODS, WEEKDAYS, EXAM_DAY, EXAM_MINIMUM, graduationGrade, ITEMS, QUESTIONS } from './data/academy';
+import { MAKI_SPOT, SEAL_CLUES, SEAL_DESTINATIONS } from './data/genin-assignments';
+import { MENTOR_LESSON, SUPPORT, type Tactic } from './data/squad';
+import { JUTSUS } from './data/jutsus';
+import { newCampaign, addLog, GAME_VERSION, LOOK_DEFAULTS, type Campaign, type Profile, type Settings } from './state/campaign';
 import { deleteSlot, readSlot, writeSlot, LAST_SLOT_KEY, SLOT_COUNT } from './state/save';
-import { applyTraining, learn, level, clampVitals, practice, statCost, train } from './systems/progression';
+import { restoreAll, applyTraining, learn, level, clampVitals, practice, statCost, train } from './systems/progression';
 import { bond, bondLabel } from './systems/relations';
 import { dueEvents, resolveEvent, sleep, startAfternoon, spendAction } from './systems/world';
+import {
+  beginGenin, beginPatrol, beginSealCase, checkPatrolPost, collectSupply, combatStats, equippedGear, finishGenin,
+  geninStage, GEAR, nextPatrolPost, recordSealClue, reportPatrol, rescueTora, resolveBells, sealCase, sealClueCount,
+  senseiId, setToraPlan, settlePatrolDuel, solveSealCase, SUPPLIES, teamMembers, toraRoute, toraTactic, TORA_TRAILS,
+  turnInSupplies, turnInTora, type GearId, type GeninStage,
+} from './systems/genin';
 import { talk } from './content/dialogue';
 import { KunaiGame, StrikeGame, ChakraGame, SealsGame, grade, type Minigame } from './scenes/minigames';
+import { ToraGame } from './scenes/tora';
+import { drawAssignmentProp, drawSupply, drawTora, drawTrack } from './render/mission-art';
 import { BattleScene } from './scenes/battle';
 import { makeFighter, startBattle } from './combat/engine';
 import { randomSeed, Rng } from './core/rng';
@@ -371,7 +381,13 @@ function startGame(i: number, camp: Campaign, raw: string | null) {
   try { localStorage.setItem(LAST_SLOT_KEY, String(i)); } catch { /* sem armazenamento */ }
   show('game');
   shownMap = null;
-  enterMap(c.map, c.x, c.y, c.dir, false);
+  // Aulas e minijogos começam do mesmo checkpoint após fechar o navegador.
+  if (c.map === 'sala') enterMap('rua', 450, 204, 'down', false);
+  else enterMap(c.map, c.x, c.y, c.dir, false);
+  if (c.rank === 'Genin' && !geninStage(c)) {
+    for (const event of dueEvents(c, 'dawn').filter((e) => e.id === 'formacao-equipes')) resolveEvent(c, event);
+    placeNpcs();
+  }
   save();
   refresh();
   if (c.day === 1 && c.quest === 'matricula-ficha' && c.log.length <= 1) {
@@ -393,21 +409,261 @@ const DAY1: Record<string, { x: number; y: number; dir: Dir; route?: [number, nu
 function actorFor(id: string): Actor {
   const d = CHARACTERS[id];
   const grad = String(c?.flags[`exame:${id}`] ?? '').startsWith('aprovado');
-  return { role: d.role, look: d.look, bandana: grad };
+  return { role: d.role, look: d.look, bandana: grad || d.rank === 'Jōnin' || id === 'maki' };
 }
 
 function placeNpcs() {
   if (!c) return;
   npcs = [];
+  const stage = geninStage(c);
+  const rally = stage ? mentorLocation(stage) : null;
+  const team = stage ? teamMembers(c) : [];
   for (const d of Object.values(CHARACTERS)) {
+    if (c.npcs[d.id]?.alive === false) continue;
     let spot: { x: number; y: number; dir?: Dir; route?: [number, number][]; map?: MapId } | undefined;
     if (c.day === 1 && c.period === 0 && DAY1[d.id]) spot = { ...DAY1[d.id], map: 'rua' };
     else spot = d.schedule[c.period as Period];
+    if (stage && d.id === senseiId(c)) spot = rally ?? { map: 'campo', x: 318, y: 266, dir: 'down' };
+    const member = team.indexOf(d.id);
+    if (member >= 0) {
+      if (rally) spot = { ...rally, x: rally.x + (member === 0 ? -30 : 30), y: rally.y + 12 };
+      if (stage === 'suprimentos' && !c.flags[SUPPLIES[member].id]) {
+        const supply = SUPPLIES[member];
+        spot = { map: 'campo', x: supply.x + 23, y: supply.y - 3, dir: 'left' };
+      }
+      if (stage === 'busca') spot = { map: 'campo', x: 352 + member * 30, y: 287, dir: 'down' };
+    }
+    if (stage === 'patrulha-rota' && !nextPatrolPost(c) && d.id === 'maki') {
+      spot = { map: 'campo', ...MAKI_SPOT, dir: 'down' };
+    }
+    if (stage && d.id === 'iruka') spot = { map: 'rua', x: 458, y: 222, dir: 'down' };
     if (!spot || (spot.map ?? 'rua') !== c.map) continue;
     if (c.map === 'sala' && !lessonMode) continue;
     // Naruto só aparece no Ichiraku à noite depois da pegadinha se não estiver limpando o monumento.
     npcs.push({ id: d.id, actor: actorFor(d.id), name: d.name, x: spot.x, y: spot.y, dir: spot.dir ?? 'down', frame: -1, route: spot.route ?? [], idx: 0, rest: 1.5, dist: 0 });
   }
+}
+
+const GENIN_OBJECTIVES: Record<GeninStage, string> = {
+  encontro: 'Encontre seu sensei no Campo de Treino',
+  sinos: 'Fale com seu sensei para começar o teste dos sinos',
+  suprimentos: 'Missão D · Confira os suprimentos com a equipe no Campo de Treino',
+  entrega: 'Missão D · Entregue os suprimentos ao sensei na Rua da Academia',
+  busca: 'Missão D · Examine os rastros de Tora no Campo de Treino',
+  retorno: 'Missão D · Leve Tora de volta ao sensei',
+  'selo-ordem': 'Fale com o sensei para investigar a encomenda',
+  'selo-pistas': 'Missão D · Examine as pistas na Rua da Academia',
+  'patrulha-ordem': 'Fale com o sensei para receber o percurso da ronda',
+  'patrulha-rota': 'Missão D · Confira os pontos de ronda no Campo de Treino',
+  'patrulha-relato': 'Missão D · Relate a ronda ao sensei na Rua da Academia',
+  ondas: 'Conheça o cliente do País das Ondas na Rua da Academia',
+  concluida: 'Vida Genin concluída · Continue treinando e explorando Konoha',
+};
+
+const TAZUNA: Actor = {
+  role: 'player', look: { skin: 'Bronzeada', hair: 'Prateado', cut: 'Curto', coat: 'Azul-claro',
+    outfit: 'Túnica cruzada', scarf: 'Lenço curto', trim: 'Preto', accessory: 'Óculos redondos', accessoryTone: 'Bronze' },
+};
+
+function toraSpot(campaign: Campaign) {
+  const { x, y } = toraRoute(campaign).shelter;
+  return { id: 'tora', x, y, r: 22, label: 'Tora' };
+}
+function mentorLocation(stage: GeninStage): (Pick<Npc, 'x' | 'y' | 'dir'> & { map: MapId }) | null {
+  if (stage === 'encontro' || stage === 'sinos') return { map: 'campo', x: 318, y: 266, dir: 'down' };
+  if (stage === 'entrega' || stage === 'retorno' || stage === 'ondas'
+    || stage === 'selo-ordem' || stage === 'selo-pistas' || stage === 'patrulha-ordem' || stage === 'patrulha-relato') return { map: 'rua', x: 630, y: 224, dir: 'down' };
+  return null;
+}
+
+function missionSpots() {
+  if (!c) return [];
+  const stage = geninStage(c);
+  if (c.map === 'rua' && stage === 'selo-pistas') return [...SEAL_CLUES];
+  if (c.map !== 'campo') return [];
+  if (stage === 'patrulha-rota') {
+    const post = nextPatrolPost(c);
+    return post ? [post] : [];
+  }
+  switch (stage) {
+    case 'suprimentos': return SUPPLIES.filter(({ id }) => !c!.flags[id]).map((spot) => ({ ...spot, r: 18 }));
+    case 'busca': return c.flags['tora-rastro'] ? [toraSpot(c)] : TORA_TRAILS.map(({ id, x, y, r, label }) => ({ id, x, y, r, label }));
+    default: return [];
+  }
+}
+function worldSpots() { return [...map().spots, ...missionSpots()]; }
+
+async function talkToSensei(who: { name: string; actor: Actor }) {
+  const active = c;
+  if (!active) return;
+  const team = teamMembers(active);
+  switch (geninStage(active)) {
+    case 'encontro': {
+      const group = [active.profile.name, ...team.map((id) => CHARACTERS[id].name)].join(', ');
+      await say(who, [`Eu sou ${who.name}, seu sensei. Nossa equipe: ${group}.`,
+        MENTOR_LESSON[senseiId(active)],
+        'Pegue estas luvas. Você pode equipá-las em Itens. Antes da primeira missão, quero ver vocês trabalhando juntos.']);
+      beginGenin(active);
+      break;
+    }
+    case 'sinos': {
+      const ready = await say(who, ['Há dois sinos. Escolha um apoio e faça pelo menos duas aproximações limpas.'],
+        [{ id: 'pronto', label: 'Começar o teste' }, { id: 'depois', label: 'Preparar primeiro' }]);
+      if (ready !== 'pronto') return;
+      const ally = await chooseSupport(active, 'Quem vai abrir espaço para você?');
+      const help = SUPPORT[ally];
+      if (help) await say({ name: CHARACTERS[ally].name, actor: actorFor(ally) }, [
+        help.tactic === 'bloqueio' ? 'Vou fechar a lateral. Você vai ter mais tempo para passar.' :
+          help.tactic === 'rastreio' ? 'Vou observar o centro da guarda e marcar a abertura para você.' :
+            'Na hora em que o sensei olhar para mim, vá pelos fundos.',
+      ]);
+      const score = await runMini(new StrikeGame(5, 'Teste dos sinos', 'Avance quando o marcador entrar na faixa.', 'bell', help?.tactic));
+      const choice = await say(who, ['A distração funcionou. Um dos colegas está cercado, e os sinos estão ao seu alcance.'],
+        [{ id: 'ajudar', label: 'Recuar e ajudar a equipe' }, { id: 'sozinho', label: 'Tentar pegar os sinos sozinho' }]);
+      if (!resolveBells(active, score, choice === 'ajudar')) {
+        await say(who, [choice !== 'ajudar' ? 'Volte para a formação. O teste termina quando a equipe trabalha junta.' :
+          'Vocês voltaram juntos, mas ainda abriram a guarda. Esperem a marca dourada e tentem de novo.']);
+        return;
+      }
+      await say(who, [score >= 0.6 ? 'Vocês entraram no tempo certo e voltaram juntos. Passaram.' : 'A entrada foi apertada. Vocês se reorganizaram a tempo e estão aprovados.',
+        'Primeira missão de rank D. A equipe vai se dividir para localizar o material. Confira a caixa de cada colega e recolha a que sobrar. Depois, encontrem-me na Rua da Academia.']);
+      break;
+    }
+    case 'entrega':
+      if (turnInSupplies(active)) await say(who, ['Suprimentos conferidos. Aqui estão os 80 ryō da missão.',
+        'A próxima missão é buscar Tora. Há rastros pelo Campo de Treino. Examinem as pistas e escolham quem vai ajudar na captura.']);
+      break;
+    case 'retorno':
+      if (turnInTora(active)) await say(who, ['Tora voltou para casa. A cliente deixou 110 ryō pela missão.',
+        'Uma encomenda ficou sem destino. Fale comigo de novo quando quiser examinar o caso.']);
+      break;
+    case 'selo-ordem': {
+      const decision = await say(who, ['Missão D: O lacre trocado. A chuva apagou a etiqueta de uma encomenda, mas deixou três pistas pela rua.',
+        'Ache o livro de entregas, o fragmento de cera e o canhoto. Volte aqui quando conseguir dizer para onde a encomenda vai.'],
+      [{ id: 'aceitar', label: 'Aceitar O lacre trocado' }, { id: 'depois', label: 'Voltar mais tarde' }]);
+      if (decision === 'aceitar') {
+        const ally = await chooseSupport(active, 'Quem vai ajudar a cruzar as pistas da encomenda?', 'Investigar por conta própria');
+        beginSealCase(active, ally);
+      }
+      break;
+    }
+    case 'selo-pistas': {
+      const count = sealClueCount(active);
+      if (count < SEAL_CLUES.length) {
+        await say(who, [`Você conferiu ${count} de ${SEAL_CLUES.length} pistas. Compare o livro, a cera e o recibo antes de indicar um destino.`]);
+        return;
+      }
+      const destination = await say(who, ['Temos o livro, o fragmento e o recibo. Para onde vai a encomenda?'],
+        [...SEAL_DESTINATIONS, { id: 'reler', label: 'Reler as pistas' }]);
+      if (destination === 'reler') {
+        await say(null, [...sealCase(active).clues]);
+        return;
+      }
+      if (solveSealCase(active, destination)) {
+        const name = SEAL_DESTINATIONS.find(({ id }) => id === destination)?.label;
+        await say(who, [`A encomenda chegou a ${name}. Vocês ganharam 120 ryō. Um dos postos do campo também pediu nossa ajuda.`]);
+      } else {
+        await say(who, ['Esse destino não combina com o recibo. Confira a descrição da carga e a marca na cera.']);
+        const ally = String(active.flags['selo-apoio'] ?? '');
+        const tactic = SUPPORT[ally]?.tactic;
+        if (tactic && teamMembers(active).includes(ally)) {
+          const evidence = { rastreio: 1, bloqueio: 0, distracao: 2 };
+          await say({ name: CHARACTERS[ally].name, actor: actorFor(ally) }, [
+            'Preste atenção nesta pista antes de escolher de novo.', sealCase(active).clues[evidence[tactic]],
+          ]);
+        }
+      }
+      break;
+    }
+    case 'patrulha-ordem': {
+      const decision = await say(who, ['Missão D: A ronda das lanternas. Siga do lado leste do Campo de Treino até a marca da ronda ao sul.',
+        'Confirme os dois postos. Maki, da guarda de Konoha, vai testar o time no fim do percurso.'],
+      [{ id: 'aceitar', label: 'Aceitar A ronda das lanternas' }, { id: 'depois', label: 'Voltar mais tarde' }]);
+      if (decision === 'aceitar') beginPatrol(active);
+      break;
+    }
+    case 'patrulha-relato':
+      if (reportPatrol(active)) await say(who, ['Os postos estão confirmados e Maki assinou o relatório. A ronda rendeu 150 ryō.',
+        active.flags['ondas-postura'] ? 'Seu relatório foi anexado ao registro da escolta de Tazuna.' :
+          'Chegou um pedido de escolta. Fale comigo de novo para conhecer o cliente.']);
+      break;
+    case 'ondas': {
+      const decision = await say({ name: 'Tazuna', actor: TAZUNA }, [
+        'Sou Tazuna. Estou construindo uma ponte no País das Ondas e preciso de escolta até lá.',
+        'No papel é uma missão de rank C. Se quiserem conferir o percurso, esta é a hora.',
+      ], [{ id: 'investigar', label: 'Pedir detalhes sobre o risco' }, { id: 'aceitar', label: 'Aceitar a escolta' }]);
+      if (decision !== 'investigar' && decision !== 'aceitar') return;
+      if (finishGenin(active, decision)) {
+        await say(who, [decision === 'investigar' ? 'Vou conferir as informações antes da partida.' : 'Vou avisar à administração que a equipe aceitou a missão.',
+          'Vida Genin concluída. Sua decisão ficou registrada no diário.']);
+      }
+      break;
+    }
+    default: await say(who, talk(active, senseiId(active))); return;
+  }
+  placeNpcs();
+}
+
+async function chooseSupport(campaign: Campaign, prompt: string, solo = 'Fazer a aproximação sozinho') {
+  const members = teamMembers(campaign).filter((id) => SUPPORT[id]);
+  if (!members.length) return '';
+  const names = { rastreio: 'Ler sinais', bloqueio: 'Fechar passagem', distracao: 'Distrair' };
+  const choice = await say(null, [prompt], [
+    ...members.map((id) => ({ id, label: `${CHARACTERS[id].name} · ${names[SUPPORT[id].tactic]}` })),
+    { id: 'sozinho', label: solo },
+  ]);
+  return members.includes(choice) ? choice : '';
+}
+
+async function examineTrail(id: string) {
+  if (!c || geninStage(c) !== 'busca' || c.flags['tora-rastro']) return;
+  const route = toraRoute(c);
+  if (route.id !== id) { await say(null, ['A marca foi deixada há tempo. Tora deve ter passado por outro caminho.']); return; }
+  const ally = await chooseSupport(c, `Este rastro é fresco. Ele segue para ${route.shelter.name}. Quem vai ajudar na aproximação?`);
+  if (ally) {
+    const support = SUPPORT[ally];
+    await say({ name: CHARACTERS[ally].name, actor: actorFor(ally) }, [support.trail, support.plan]);
+  } else await say(null, ['Você guarda a pista e segue para o esconderijo.']);
+  if (setToraPlan(c, ally)) toast('Rastro confirmado. Siga até o esconderijo.');
+}
+
+async function catchTora() {
+  if (!c) return;
+  const tactic = toraTactic(c);
+  const score = await runMini(new ToraGame(tactic ?? 'sozinho'));
+  if (score < 1) { await say(null, ['Tora deu um salto e voltou para o esconderijo. Espere a poeira baixar e tente de novo.']); return; }
+  if (rescueTora(c)) await say(null, ['Você conseguiu pegar Tora. Encontre seu sensei na Rua da Academia.']);
+}
+
+async function patrolDuel(who: { name: string; actor: Actor }) {
+  if (!c || geninStage(c) !== 'patrulha-rota' || nextPatrolPost(c)) return;
+  const decision = await say(who, ['Sou Maki, da guarda. Poste aceso, marca conferida. Agora mostrem como a equipe reage quando alguém fecha a passagem.'],
+    [{ id: 'pronto', label: 'Começar o duelo da ronda' }, { id: 'depois', label: 'Preparar a equipe' }]);
+  if (decision !== 'pronto') return;
+  const ally = await chooseSupport(c, 'Quem vai preparar a entrada no duelo?');
+  const tactic = SUPPORT[ally]?.tactic;
+  if (ally) await say({ name: CHARACTERS[ally].name, actor: actorFor(ally) }, [
+    tactic === 'rastreio' ? 'Vi onde ela está. Você pode começar a longa distância.' :
+      tactic === 'bloqueio' ? 'Eu fecho a lateral. Você começa perto dela.' :
+        'Deixa comigo. Quando você entrar, ela já vai ter gasto fôlego seguindo a distração.',
+  ]);
+  const won = await runBattle('maki', 'Ronda das lanternas', { tactic });
+  if (settlePatrolDuel(c, won === true)) {
+    if (ally) bond(c, ally, { confianca: 4 }, 'Preparou comigo a entrada no duelo da ronda.');
+    await say(who, ['Perceberam a abertura e mantiveram a passagem segura. Levem meu relatório ao sensei.']);
+    placeNpcs();
+  } else {
+    restoreAll(c);
+    await say(who, ['Pausa para água. A ronda continua aqui. Quando estiver pronto, tente de novo, com outra abertura se quiser.']);
+  }
+}
+
+function drawMissionSpot(spot: ReturnType<typeof missionSpots>[number]) {
+  const { x, y, id } = spot;
+  if (id === 'tora') drawTora(g, x, y, 1, 1, calm.matches ? 0 : Math.floor(clock * 3) % 2);
+  else if (id.startsWith('rastro-')) drawTrack(g, x, y, id);
+  else if (id.startsWith('selo-') || id.startsWith('patrulha-')) drawAssignmentProp(g, id, x, y, calm.matches ? 0 : clock);
+  else drawSupply(g, x, y, id);
 }
 
 // ——— Mapas e câmera ———
@@ -489,7 +745,15 @@ function todayLesson(cc: Campaign) { return LESSONS.find((l) => l.day === cc.day
 function objective(cc: Campaign): string {
   if (cc.quest === 'matricula-ficha') return 'Pegue a ficha no quadro de avisos';
   if (cc.quest === 'matricula-entrega') return 'Entregue a ficha a Iruka';
-  if (cc.flags['academia-concluida']) return cc.period === 2 ? 'Noite: descanse. A vida de genin começa na próxima etapa' : 'Era da Academia concluída. Treine e fortaleça seus laços';
+  const stage = geninStage(cc);
+  if (stage === 'busca' && cc.flags['tora-rastro']) return 'Missão D · Aproxime-se de Tora no esconderijo';
+  if (stage === 'selo-pistas') {
+    const count = sealClueCount(cc);
+    return count === SEAL_CLUES.length ? 'Missão D · Informe o destino ao sensei' : `${GENIN_OBJECTIVES[stage]} · ${count}/${SEAL_CLUES.length}`;
+  }
+  if (stage === 'patrulha-rota' && !nextPatrolPost(cc)) return 'Missão D · Encontre Maki no Campo de Treino';
+  if (stage === 'suprimentos') return `${GENIN_OBJECTIVES.suprimentos} · ${SUPPLIES.filter((item) => cc.flags[item.id]).length}/3`;
+  if (stage) return GENIN_OBJECTIVES[stage];
   if (cc.rank === 'Genin') return 'Você é genin! Amanhã saem as equipes';
   const retake = cc.flags['exame:player'] === 'reprovado' ? Number(cc.flags.repescagem) : 0;
   if (cc.period === 0) {
@@ -562,7 +826,7 @@ function nearestContact() {
   if (!c) return null;
   let best: typeof contact = null, dist = 30;
   for (const n of npcs) { const d = Math.hypot(c.x - n.x, c.y - n.y); if (d < dist) { dist = d; best = { kind: 'npc', npc: n }; } }
-  for (const s of map().spots) { const d = Math.hypot(c.x - s.x, c.y - s.y); if (d < s.r && d < dist + 6) { dist = d; best = { kind: 'spot', id: s.id, label: s.label }; } }
+  for (const s of worldSpots()) { const d = Math.hypot(c.x - s.x, c.y - s.y); if (d < s.r && d < dist + 6) { dist = d; best = { kind: 'spot', id: s.id, label: s.label }; } }
   return best;
 }
 
@@ -590,24 +854,53 @@ async function talkTo(n: Npc) {
     return;
   }
   if (n.id === 'gen') { await shop(who); return; }
-  // Aula de reforço: Iruka ensina à tarde a técnica que o jogador perdeu.
-  if (n.id === 'iruka' && c.period === 1) {
+  const stage = geninStage(c);
+  if (stage && n.id === senseiId(c)) { await talkToSensei(who); return; }
+  if (n.id === 'maki') { await patrolDuel(who); return; }
+  const member = teamMembers(c).indexOf(n.id);
+  if (stage === 'suprimentos' && member >= 0 && !c.flags[SUPPLIES[member].id]) {
+    const supply = SUPPLIES[member];
+    await say(who, [SUPPORT[n.id].supply, `${supply.label} conferida. Eu levo esta.`]);
+    if (collectSupply(c, supply.id)) {
+      bond(c, n.id, { confianca: 2 }, `Conferimos juntos: ${supply.label}.`);
+      placeNpcs();
+      toast(`${supply.label} recolhida por ${n.name}.`);
+    }
+    return;
+  }
+  if (stage === 'busca' && member >= 0) {
+    await say(who, [SUPPORT[n.id].trail, SUPPORT[n.id].plan]);
+    return;
+  }
+  if (n.id === 'iruka' && (c.period === 1 || geninStage(c))) {
     const missed = LESSONS.find((l) => l.teaches && l.day < c!.day && !(l.teaches in c!.jutsus));
     if (missed?.teaches) {
-      const ch = await say(who, [`Você faltou à aula de ${JUTSUS[missed.teaches].name}. Posso passar o básico agora, mas vai custar sua tarde.`], [{ id: 'sim', label: 'Aprender agora (1 ação)' }, { id: 'nao', label: 'Depois' }]);
-      if (ch === 'sim' && c.actions > 0) {
+      const ch = await say(who, [`Posso revisar ${JUTSUS[missed.teaches].name} agora. Também podemos fazer a aula inteira.`],
+        [{ id: 'sim', label: c.period === 1 ? 'Aprender o básico (1 ação)' : 'Aprender o básico' }, { id: 'nao', label: 'Ver aulas para repor' }]);
+      if (ch === 'sim' && (c.period !== 1 || c.actions > 0)) {
         learn(c, missed.teaches, 8);
         addLog(c, `Aula de reforço com Iruka: ${JUTSUS[missed.teaches].name}.`);
         bond(c, 'iruka', { respeito: 2 });
         afterAction();
+        return;
       }
+    }
+    const overdue = LESSONS.filter((lesson) => lesson.day > 1 && lesson.day < c!.day && !c!.lessonsDone.includes(lesson.day));
+    if (overdue.length && (c.period !== 1 || c.actions > 0)) {
+      const pick = await say(who, ['Podemos repor uma aula que ficou para trás. Escolha o assunto.'], [
+        ...overdue.map((lesson) => ({ id: String(lesson.day), label: lesson.title })),
+        { id: 'depois', label: 'Agora não' },
+      ]);
+      const lesson = overdue.find((option) => option.day === Number(pick));
+      if (lesson) await runLesson(lesson, true);
       return;
     }
   }
   const lines = talk(c, n.id);
   const npcState = c.npcs[n.id];
-  if (npcState && npcState.talkedDay !== c.day && CHARACTERS[n.id].classmate || n.id === 'iruka') {
-    if (npcState.talkedDay !== c.day) { npcState.talkedDay = c.day; bond(c, n.id, { amizade: 3 }); }
+  if (npcState && npcState.talkedDay !== c.day && (CHARACTERS[n.id].classmate || n.id === 'iruka')) {
+    npcState.talkedDay = c.day;
+    bond(c, n.id, { amizade: 3 });
   }
   if (n.id === 'naruto' && c.period === 1 && c.map === 'campo' && npcState.bond.amizade >= 20 && 'bunshin' in c.jutsus) {
     const ch = await say(who, lines, [{ id: 'treinar', label: 'Treinar Bunshin com Naruto (1 ação)' }, { id: 'nao', label: 'Agora não' }]);
@@ -623,8 +916,25 @@ async function talkTo(n: Npc) {
     return;
   }
   if (CHARACTERS[n.id].classmate && c.period === 1) {
-    const ch = await say(who, lines, [{ id: 'luta', label: 'Desafiar para um treino de luta (1 ação)' }, { id: 'nao', label: 'Até mais' }]);
+    const classic = c.era === 'classico' && n.id === 'sasuke' && !('gokakyu' in c.jutsus);
+    const ch = await say(who, lines, [
+      { id: 'luta', label: 'Desafiar para um treino de luta (1 ação)' },
+      ...(classic ? [{ id: 'katon', label: 'Treinar Katon (1 ação)' }] : []),
+      { id: 'nao', label: 'Até mais' },
+    ]);
     if (ch === 'luta') await spar(n);
+    if (ch === 'katon') {
+      const ready = Object.entries(JUTSUS.gokakyu.requirements)
+        .every(([stat, minimum]) => c!.stats[stat as Stat] >= minimum);
+      if (!ready) { await say(who, ['Primeiro desenvolva Ninjutsu e Chakra até 6. A chama precisa de controle e reserva.']); return; }
+      await say(who, ['Repare no ritmo dos selos. Pratique mirando os alvos de pedra, longe das árvores.']);
+      const score = await runMini(new SealsGame(6, seededRand(), 2.7));
+      afterAction();
+      if (score < 0.5) { await say(who, ['A chama apagou antes de sair. Podemos praticar outra vez.']); return; }
+      learn(c, 'gokakyu', Math.round(20 + score * 20));
+      addLog(c, 'Treinou com Sasuke e aprendeu Katon: Gōkakyū.');
+      await say(who, ['A chama sustentou a forma. Use o Katon a média ou longa distância.']);
+    }
     return;
   }
   await say(who, lines);
@@ -635,18 +945,54 @@ async function shop(who: { name: string; actor: Actor }) {
   for (;;) {
     const ch = await say(who, [`${talk(c, 'gen')[0]} Você tem ${c.ryo} ryō.`], [
       ...Object.values(ITEMS).map((i) => ({ id: i.id, label: `${i.name} · ${i.price} ryō (tem ${c!.inventory[i.id] ?? 0})` })),
+      ...(geninStage(c) ? Object.entries(GEAR).filter(([id]) => !c!.inventory[id])
+        .map(([id, gear]) => ({ id, label: `${gear.name} · ${gear.price} ryō` })) : []),
       { id: 'sair', label: 'Só olhando, obrigado' },
     ]);
+    const gear = GEAR[ch as GearId];
+    if (gear && Object.hasOwn(GEAR, ch) && geninStage(c)) {
+      if (c.inventory[ch]) continue;
+      if (c.ryo < gear.price) { await say(who, ['Faltou dinheiro para esse equipamento.']); continue; }
+      c.ryo -= gear.price;
+      c.inventory[ch] = 1;
+      save();
+      continue;
+    }
     const item = ITEMS[ch];
     if (!item) return;
     if (c.ryo < item.price) { await say(who, ['Faltou dinheiro, jovem. Volte quando receber a mesada.']); return; }
     c.ryo -= item.price;
     c.inventory[item.id] = (c.inventory[item.id] ?? 0) + 1;
+    save();
   }
 }
 
 async function useSpot(id: string) {
   if (!c) return;
+  if (geninStage(c) === 'suprimentos') {
+    const index = SUPPLIES.findIndex((supply) => supply.id === id);
+    if (index >= 0) {
+      const member = teamMembers(c)[index];
+      if (member) { await say(null, [`${CHARACTERS[member].name} está logo ao lado. Confirme com o colega que este é o material certo.`]); return; }
+      if (collectSupply(c, id)) { toast(`${SUPPLIES[index].label} recolhida.`); placeNpcs(); return; }
+    }
+  }
+  if (geninStage(c) === 'selo-pistas') {
+    const index = SEAL_CLUES.findIndex((clue) => clue.id === id);
+    if (index >= 0) {
+      recordSealClue(c, id);
+      await say({ name: SEAL_CLUES[index].label }, [sealCase(c).clues[index]]);
+      return;
+    }
+  }
+  if (checkPatrolPost(c, id)) {
+    await say(null, [id === 'patrulha-luz' ? 'A lanterna está acesa. A chama ilumina a entrada da trilha.' :
+      'Você conferiu a fita da guarda e marcou a passagem. Maki espera adiante.']);
+    placeNpcs();
+    return;
+  }
+  if (id.startsWith('rastro-')) { await examineTrail(id); return; }
+  if (id === 'tora' && geninStage(c) === 'busca') { await catchTora(); return; }
   switch (id) {
     case 'quadro':
       if (c.quest === 'matricula-ficha') {
@@ -697,6 +1043,10 @@ function runMini(mg: Minigame): Promise<number> {
   box.hidden = false;
   box.querySelector('.mini-title')!.textContent = mg.title;
   box.querySelector('.mini-help')!.textContent = mg.help;
+  const action = $<HTMLButtonElement>('mini-action');
+  action.hidden = !!mg.choose;
+  action.disabled = false;
+  action.textContent = mg instanceof ToraGame ? 'Aproximar · A' : mg instanceof ChakraGame ? 'Segure · A' : 'Agir · A';
   renderMiniOptions();
   return new Promise((res) => (miniResolve = res));
 }
@@ -710,6 +1060,7 @@ function miniTick(dt: number) {
     miniResolve = null;
     $('mini').querySelector('.mini-title')!.textContent = `${grade(score)} · ${Math.round(score * 100)} pontos`;
     $('mini').querySelector('.mini-opts')!.replaceChildren();
+    $<HTMLButtonElement>('mini-action').disabled = true;
     setTimeout(() => { $('mini').hidden = true; mini = null; busy = false; r(score); }, 1300);
   }
 }
@@ -735,15 +1086,16 @@ async function trainSpot(kind: 'troncos' | 'alvos' | 'meditacao') {
 
 async function practiceSpot() {
   if (!c) return;
-  const known = Object.keys(c.jutsus).filter((j) => JUTSUS[j]?.era === 'academia');
+  const known = Object.keys(c.jutsus).filter((j) => JUTSUS[j]?.era === 'academia' || (c!.era === 'classico' && JUTSUS[j]?.era === 'classico'));
   if (!known.length) { await say(null, ['Você ainda não aprendeu nenhuma técnica. As aulas de Iruka ensinam Henge, Kawarimi e Bunshin.']); return; }
   if (c.period !== 1) { await say(null, ['Melhor praticar à tarde, com o campo livre.']); return; }
   const ch = await say(null, ['Qual técnica praticar? Cada sessão gasta chakra e uma ação.'], [...known.map((j) => ({ id: j, label: `${JUTSUS[j].name} · domínio ${Math.round(c!.jutsus[j])}%` })), { id: '', label: 'Cancelar' }]);
   const j = JUTSUS[ch];
   if (!j) return;
-  if (c.chakra < j.chakraCost * 2) { await say(null, ['Chakra baixo demais. Medite na pedra ou descanse antes.']); return; }
+  const cost = Math.min(j.chakraCost * 2, maxVitals(c.stats).chakra);
+  if (c.chakra < cost) { await say(null, ['Chakra baixo demais. Medite na pedra ou descanse antes.']); return; }
   const score = await runMini(new SealsGame(4, seededRand(), 2.6));
-  c.chakra -= j.chakraCost * 2;
+  c.chakra -= cost;
   const res = applyTraining(c, j.trains, score, 0.2, j.id);
   addLog(c, `Praticou ${j.name}: domínio ${Math.round(c.jutsus[j.id])}%.`);
   toast(`${j.name}: domínio ${Math.round(c.jutsus[j.id])}% (+${(res.mastery?.delta ?? 0).toFixed(1)})`);
@@ -755,22 +1107,29 @@ let battleScene: BattleScene | null = null;
 const POWER = { facil: 0.8, normal: 1, dificil: 1.2 } as const;
 
 function playerFighter() {
-  const academy = Object.fromEntries(Object.entries(c!.jutsus).filter(([j]) => JUTSUS[j]?.era === 'academia'));
+  const known = Object.fromEntries(Object.entries(c!.jutsus).filter(([j]) => JUTSUS[j]?.era === 'academia' || (c!.era === 'classico' && JUTSUS[j]?.era === 'classico')));
   return makeFighter({
-    id: 'player', name: c!.profile.name, role: 'player', look: { ...c!.profile }, stats: c!.stats, jutsus: academy,
+    id: 'player', name: c!.profile.name, role: 'player', look: { ...c!.profile }, stats: combatStats(c!), jutsus: known,
+    damageReduction: equippedGear(c!) === 'colete' ? GEAR.colete.reduction : 0,
     items: { kunai: c!.inventory.kunai ?? 0, shuriken: c!.inventory.shuriken ?? 0 }, vitals: { hp: c!.hp, chakra: c!.chakra, stamina: c!.stamina },
   }, 0);
 }
 function npcFighter(id: string) {
   const d = CHARACTERS[id], n = c!.npcs[id];
-  return makeFighter({ id, name: d.name, role: d.role, look: d.look, stats: n.stats, jutsus: n.jutsus, personality: d.personality, power: POWER[c!.settings.difficulty] }, 1);
+  const techniques = { ...n.jutsus };
+  if (c!.era === 'classico' && id === 'sasuke') techniques.gokakyu = 70;
+  if (c!.era === 'classico' && id === 'naruto' && c!.flags['naruto-kage-bunshin']) techniques['kage-bunshin'] = 85;
+  return makeFighter({ id, name: d.name, role: d.role, look: d.look, stats: n.stats, jutsus: techniques, personality: d.personality, power: POWER[c!.settings.difficulty] }, 1);
 }
 
-async function runBattle(id: string, title: string) {
+async function runBattle(id: string, title: string, patrol?: { tactic?: Tactic }) {
   if (!c) return null;
   busy = true; held.clear();
   const seed = (c.rng ^ (c.day * 7919) ^ c.wins * 31) >>> 0;
-  const battle = startBattle(playerFighter(), npcFighter(id), seed, 1);
+  const opponent = npcFighter(id);
+  if (patrol?.tactic === 'distracao') opponent.stamina = Math.max(1, opponent.stamina - 8);
+  const distance = patrol?.tactic === 'rastreio' ? 2 : patrol?.tactic === 'bloqueio' ? 0 : 1;
+  const battle = startBattle(playerFighter(), opponent, seed, distance);
   const m = map(), focus = { x: c.x, y: c.y };
   const scene = new BattleScene({
     battle, title, actors: [playerActor(), actorFor(id)],
@@ -787,13 +1146,17 @@ async function runBattle(id: string, title: string) {
   const me = result.fighters[0], won = result.over?.winner === 0;
   // Treino não fere de verdade: sobra ao menos um terço da vida.
   c.hp = Math.max(Math.round(maxVitals(c.stats).hp / 3), me.hp); c.chakra = me.chakra; c.stamina = me.stamina;
+  if (patrol) {
+    refresh();
+    return won;
+  }
   // Aprendizado pelo que foi usado na luta.
   const used = me.used;
   const gains: string[] = [];
   const t = (s: Stat, n: number) => { if (n > 0) { const p = train(c!, s, Math.min(1.2, n * 0.18)); if (p) gains.push(`${s} +${p}`); } };
   t('Taijutsu', used.taijutsu ?? 0); t('Força', (used.taijutsu ?? 0) * 0.6); t('Bukijutsu', (used.kunai ?? 0) + (used.shuriken ?? 0));
   t('Resistência', used.defend ?? 0); t('Velocidade', (used.advance ?? 0) + (used.retreat ?? 0));
-  for (const j of ['henge', 'kawarimi', 'bunshin']) if (used[j]) practice(c, j, used[j] * 3);
+  for (const j of Object.keys(c.jutsus)) if (used[j]) practice(c, j, used[j] * 3);
   c.xp += won ? 40 : 20;
   if (won) { c.wins++; bond(c, id, { rivalidade: 6, respeito: 5 }, `Perdeu para ${c.profile.name} num treino.`); c.reputation += 1; }
   else { c.losses++; bond(c, id, { respeito: 2 }, `Venceu ${c.profile.name} num treino.`); }
@@ -809,6 +1172,12 @@ const SPAR_LINES: Record<string, [string, string, string]> = {
   sakura: ['Tá bom, mas sem puxar cabelo! Eu também treinei, viu?', 'Nossa... você tá forte mesmo.', 'Estudar ajuda até na luta, sabia?'],
   emi: ['Luta rapidinha? Eu tenho um recado pra entregar depois!', 'Uau! Vou contar pra rua inteira!', 'Mais rápida que um recado urgente!'],
   daichi: ['Finalmente! Vamos ver quem é mais forte de verdade.', 'Hmpf. Bom golpe. Da próxima eu revido.', 'Força ganha de truque. Eu disse.'],
+  ino: ['Olhe para os meus pés. Se ficar olhando só para as mãos, já era.', 'Você esperou eu terminar a finta. Vou mudar o passo da próxima vez.', 'Enquanto você olhava a mão, eu já tinha cruzado a guarda.'],
+  shikamaru: ['Que trabalho… Tudo bem. Tente me encurralar antes que eu ache uma saída.', 'Você tirou meu espaço. Acabei gastando energia à toa.', 'Eu só precisava de distância e uma abertura.'],
+  choji: ['Vou segurar o primeiro golpe. Quero ver o que você faz depois.', 'Achei que aguentava mais uma. Preciso aprender a recuar.', 'Firmei os pés. Aí sobrou espaço para responder.'],
+  kiba: ['Corra enquanto pode! Eu e o Akamaru treinamos arrancada desde cedo.', 'Você me viu vindo de longe, né? Preciso variar meu bote.', 'Fechei a distância antes de você armar a guarda.'],
+  hinata: ['Eu vou esperar sua entrada. Posso treinar minha resposta?', 'Eu hesitei no começo. Obrigada pelo treino.', 'Esperei o momento certo e consegui. Obrigada.'],
+  shino: ['Vou testar o alcance. Se chegar perto, tente impedir minha saída.', 'Você cortou a rota de recuo. Isso decidiu a luta.', 'Mantive o espaço. Foi o suficiente.'],
 };
 
 async function spar(n: Npc) {
@@ -851,7 +1220,7 @@ async function quiz(topic: string | undefined, count: number): Promise<number> {
 
 const LESSON_PARTNER: Record<number, string> = { 3: 'daichi', 9: 'sasuke' };
 
-async function runLesson(lesson: typeof LESSONS[number]) {
+async function runLesson(lesson: typeof LESSONS[number], makeup = false) {
   if (!c) return;
   lessonMode = true;
   enterMap('sala', 240, 172, 'up');
@@ -871,16 +1240,17 @@ async function runLesson(lesson: typeof LESSONS[number]) {
   }
   const res = applyTraining(c, lesson.trains, score, 0.55);
   if (lesson.teaches) learn(c, lesson.teaches, 10 + Math.round(score * 14));
-  c.lessonsDone.push(c.day);
-  c.lessonScores[c.day] = Math.round(score * 100);
+  c.lessonsDone.push(lesson.day);
+  c.lessonScores[lesson.day] = Math.round(score * 100);
   bond(c, 'iruka', { respeito: score > 0.6 ? 3 : 1 });
   const parts = [lesson.teaches ? `Você aprendeu ${JUTSUS[lesson.teaches].name} (domínio ${Math.round(c.jutsus[lesson.teaches])}%).` : '', res.gains.length ? `Evolução: ${res.gains.map((x) => `${x.stat} +${x.points}`).join(', ')}.` : ''].filter(Boolean);
   addLog(c, `Aula: ${lesson.title} (${Math.round(score * 100)} pontos). ${parts.join(' ')}`);
   await say(iruka, [score > 0.7 ? 'Muito bem! Foi um dos melhores da turma hoje.' : score > 0.45 ? 'Nada mal. Treine à tarde para fixar.' : 'Precisa praticar mais. O Campo de Treino fica aberto à tarde.', ...(parts.length ? [parts.join(' ')] : []), 'Dispensados! Até amanhã.']);
   lessonMode = false;
-  startAfternoon(c);
+  if (!makeup) startAfternoon(c);
+  else if (c.period === 1) spendAction(c);
   enterMap('rua', 450, 204, 'down');
-  toast('Tarde livre. O Campo de Treino fica a oeste, seguindo a rua.');
+  if (!makeup) toast('Tarde livre. O Campo de Treino fica a oeste, seguindo a rua.');
 }
 
 // ——— Exame de graduação ———
@@ -899,19 +1269,18 @@ async function runExam() {
   await say(iruka, ['Agora a prova prática. Quando estiver pronto, faça os selos e crie seus clones.']);
   const sealScore = await runMini(new SealsGame(6, seededRand(), 2.4));
   const mastery = c.jutsus.bunshin ?? 0;
-  const rng = new Rng(c.rng ^ 0xa5a5);
-  const chance = Math.max(0.03, Math.min(0.97, castChance(mastery + sealScore * 25, c.stats['Controle de chakra']) - 0.15 + written * 0.05));
-  const pass = mastery > 0 && rng.chance(chance);
-  c.rng = rng.state;
+  const { points, pass } = graduationGrade(mastery, sealScore, written, c.stats['Controle de chakra']);
+  const report = `Nota ${points}/100 · mínimo ${EXAM_MINIMUM}. Escrita ${Math.round(written * 100)}%, selos ${Math.round(sealScore * 100)}%, domínio do Bunshin ${Math.round(mastery)}%.`;
   c.lessonsDone.push(c.day);
   if (pass) {
     c.rank = 'Genin';
     c.flags['exame:player'] = 'aprovado';
     c.reputation += 10; c.xp += 150;
     bond(c, 'iruka', { respeito: 10, confianca: 5 }, `Formou ${c.profile.name} como genin.`);
-    addLog(c, `Exame de graduação: aprovado. ${c.profile.name} agora é Genin.`);
+    addLog(c, `Exame de graduação: aprovado com ${points}/100. ${c.profile.name} agora é Genin.`);
     await say(iruka, [
-      mastery >= 60 ? 'Três clones perfeitos, firmes do primeiro ao último. Excelente.' : 'Os clones tremeram um pouco, mas estão de pé. Isso conta.',
+      mastery >= 60 ? 'Três clones firmes do primeiro ao último. Excelente.' : 'Os clones ficaram de pé. Vamos à nota.',
+      report,
       `Parabéns, ${c.profile.name}. Você está aprovado.`,
       'Aqui está a sua bandana. Use com orgulho: a partir de hoje você é um ninja da Folha.',
     ]);
@@ -921,10 +1290,11 @@ async function runExam() {
   } else {
     c.flags['exame:player'] = 'reprovado';
     c.flags.repescagem = c.day + 3;
-    addLog(c, 'Exame de graduação: reprovado. Repescagem marcada em três dias.');
+    addLog(c, `Exame de graduação: reprovado com ${points}/100. Repescagem marcada em três dias.`);
     await say(iruka, [
       mastery === 0 ? 'Você ainda não aprendeu o Bunshin. Sem ele não tenho como aprovar.' : 'O clone desfez antes de ficar de pé. Sinto muito, mas não posso aprovar assim.',
-      `Não desanime. Você terá uma repescagem no dia ${c.day + 3}. Treine o Bunshin no Campo de Treino.`,
+      report,
+      `Sua repescagem será no dia ${c.day + 3}. Pratique o Bunshin no Campo de Treino ou fale comigo sobre uma aula perdida.`,
     ]);
   }
   lessonMode = false;
@@ -950,6 +1320,11 @@ async function ramen() {
 
 async function home() {
   if (!c) return;
+  if (geninStage(c) && c.period === 0) {
+    const ch = await say(null, ['Encerrar a manhã e seguir para a tarde?'], [{ id: 'sim', label: 'Descansar até a tarde' }, { id: 'nao', label: 'Continuar a manhã' }]);
+    if (ch === 'sim') { startAfternoon(c); placeNpcs(); }
+    return;
+  }
   if (c.period === 0) { await say(null, [c.lessonsDone.includes(c.day) || c.day === 1 ? 'Ainda é cedo para voltar para casa.' : 'A aula começa logo. Melhor ir para a Academia.']); return; }
   if (c.period === 1) {
     const ch = await say(null, ['Descansar em casa até a noite? As ações restantes da tarde serão perdidas.'], [{ id: 'sim', label: 'Descansar até a noite' }, { id: 'nao', label: 'Continuar a tarde' }]);
@@ -990,7 +1365,7 @@ async function endDay() {
     save();
     await say({ name: 'Era da Academia concluída' }, [
       `${c.profile.name} deixou a Academia como genin da Folha, com ${c.wins} vitórias em treinos e ${Object.keys(c.jutsus).length} técnicas aprendidas.`,
-      'A vida de genin (equipes, sensei e as primeiras missões) chega na próxima etapa. Até lá, Konoha continua aberta: treine, converse e fortaleça seus laços.',
+      'Seu sensei está esperando no Campo de Treino. Siga a seta para encontrar a equipe.',
     ]);
   }
 }
@@ -1090,11 +1465,13 @@ function paint() {
   if (!c) return;
   const m = map();
   const actors = npcs.map((n) => ({ y: n.y, draw: () => drawActor(g, n.x, n.y, n.actor, n.dir, n.frame < 0 ? idlePose(clock, n.x * 0.017, calm.matches) : n.frame) }));
+  for (const spot of missionSpots()) actors.push({ y: spot.y, draw: () => drawMissionSpot(spot) });
+  if (m.id === 'rua' && geninStage(c) === 'ondas') actors.push({ y: 212, draw: () => drawActor(g, 649, 212, TAZUNA, 'down', -1) });
   const me: Actor = { role: 'player', look: { ...c.profile }, bandana: c.rank !== 'Estudante da Academia' };
   actors.push({ y: c.y, draw: () => drawActor(g, c!.x, c!.y, me, c!.dir, walkFrame < 0 ? idlePose(clock, 0, calm.matches) : walkFrame, clock < gestureUntil) });
   paintWorld(g, m, camera, cv.width, cv.height, actors, c.period);
   if (contact && !busy) {
-    const [x, y] = contact.kind === 'npc' ? [contact.npc.x, contact.npc.y - (contact.npc.actor.role === 'iruka' || contact.npc.actor.role === 'gen' ? 52 : 46)] : (() => { const s = m.spots.find((s2) => s2.id === (contact as { id: string }).id)!; return [s.x, s.y - 30]; })();
+    const [x, y] = contact.kind === 'npc' ? [contact.npc.x, contact.npc.y - (contact.npc.actor.role === 'iruka' || contact.npc.actor.role === 'gen' ? 52 : 46)] : (() => { const s = worldSpots().find((s2) => s2.id === (contact as { id: string }).id)!; return [s.x, s.y - 30]; })();
     const bob = calm.matches ? 0 : Math.round(Math.sin(clock * 5));
     px(g, x - 5, y + bob, 11, 7, '#5e4636'); px(g, x - 4, y + 1 + bob, 9, 5, '#f8e8b6'); px(g, x, y + 6 + bob, 2, 2, '#5e4636');
     for (let i = 0; i < 3; i++) px(g, x - 2 + i * 2, y + 3 + bob, 1, 1, '#8b5036');
@@ -1107,12 +1484,32 @@ function paint() {
 const EXIT_TO: Partial<Record<MapId, { x: number; y: number }>> = { campo: { x: 622, y: 240 }, sala: { x: 240, y: 262 } };
 
 /** Onde o objetivo atual está, no mapa atual (ou a saída que leva até ele). */
-function questTarget(): { x: number; y: number; lift: number } | null {
-  if (!c || c.flags['academia-concluida']) return null;
+function questTarget(hideNearby = true): { x: number; y: number; lift: number } | null {
+  if (!c) return null;
   let goal: { map: MapId; x: number; y: number; lift: number } | null = null;
   const lessonPending = c.period === 0 && c.rank !== 'Genin' && !c.lessonsDone.includes(c.day)
     && (!!todayLesson(c) || c.day >= EXAM_DAY) && !(c.flags['exame:player'] === 'reprovado' && c.day < Number(c.flags.repescagem));
-  if (c.quest === 'matricula-ficha') goal = { map: 'rua', x: 308, y: 212, lift: 34 };
+  const stage = geninStage(c);
+  if (stage === 'suprimentos') {
+    const spot = SUPPLIES.find(({ id }) => !c!.flags[id]);
+    if (spot) {
+      const ally = teamMembers(c)[SUPPLIES.indexOf(spot)];
+      goal = { map: 'campo', x: spot.x + (ally ? 23 : 0), y: spot.y - (ally ? 3 : 0), lift: ally ? 44 : 13 };
+    }
+  } else if (stage === 'busca') {
+    if (c.flags['tora-rastro']) goal = { map: 'campo', ...toraSpot(c), lift: 15 };
+    else if (c.map !== 'campo') goal = { map: 'campo', x: 0, y: 0, lift: 0 };
+  }
+  else if (stage === 'selo-pistas' && sealClueCount(c) < SEAL_CLUES.length) {
+    const clue = SEAL_CLUES.find(({ id }) => !c!.flags[id])!;
+    goal = { map: 'rua', x: clue.x, y: clue.y, lift: 15 };
+  } else if (stage === 'patrulha-rota') {
+    const spot = nextPatrolPost(c);
+    goal = spot ? { map: 'campo', x: spot.x, y: spot.y, lift: 22 } : { map: 'campo', ...MAKI_SPOT, lift: 45 };
+  } else if (stage) {
+    const spot = mentorLocation(stage);
+    if (spot) goal = { ...spot, lift: 53 };
+  } else if (c.quest === 'matricula-ficha') goal = { map: 'rua', x: 308, y: 212, lift: 34 };
   else if (c.quest === 'matricula-entrega') {
     const ir = npcs.find((n) => n.id === 'iruka');
     goal = { map: 'rua', x: ir?.x ?? 458, y: ir?.y ?? 222, lift: 56 };
@@ -1125,7 +1522,7 @@ function questTarget(): { x: number; y: number; lift: number } | null {
     const ex = EXIT_TO[c.map];
     return ex ? { x: ex.x, y: ex.y, lift: 18 } : null;
   }
-  if (Math.hypot(c.x - goal.x, c.y - goal.y) < 30) return null;
+  if (hideNearby && Math.hypot(c.x - goal.x, c.y - goal.y) < 30) return null;
   return goal;
 }
 
@@ -1172,8 +1569,8 @@ function paintCover() {
 }
 
 // ——— Menu ———
-type Tab = 'ficha' | 'tecnicas' | 'relacoes' | 'diario' | 'calendario' | 'itens' | 'sistema';
-const TABS: [Tab, string][] = [['ficha', 'Ficha'], ['tecnicas', 'Técnicas'], ['relacoes', 'Relações'], ['diario', 'Diário'], ['calendario', 'Calendário'], ['itens', 'Itens'], ['sistema', 'Sistema']];
+type Tab = 'ficha' | 'tecnicas' | 'relacoes' | 'diario' | 'calendario' | 'itens' | 'mapa' | 'sistema';
+const TABS: [Tab, string][] = [['ficha', 'Ficha'], ['tecnicas', 'Técnicas'], ['relacoes', 'Relações'], ['diario', 'Diário'], ['calendario', 'Calendário'], ['itens', 'Itens'], ['mapa', 'Mapa'], ['sistema', 'Sistema']];
 let tab: Tab = 'ficha';
 function el(tag: string, cls = '', text = '') { const e = document.createElement(tag); if (cls) e.className = cls; if (text) e.textContent = text; return e; }
 function row(a: string, b: string) { const r = el('div', 'row'); r.append(el('span', '', a), el('b', '', b)); return r; }
@@ -1213,7 +1610,7 @@ function renderMenu() {
       body.append(card);
     }
   } else if (tab === 'relacoes') {
-    for (const id of ['iruka', 'naruto', 'sasuke', 'sakura', 'emi', 'daichi']) {
+    for (const id of ['iruka', ...CLASSMATES, ...(geninStage(c) ? [senseiId(c)] : [])]) {
       const n = c.npcs[id], d = CHARACTERS[id], card = el('div', 'card');
       card.append(row(d.name + (d.original ? ' (original)' : ''), bondLabel(n.bond)),
         el('p', 'muted', `Amizade ${n.bond.amizade} · Rivalidade ${n.bond.rivalidade} · Respeito ${n.bond.respeito} · Confiança ${n.bond.confianca}`));
@@ -1221,6 +1618,12 @@ function renderMenu() {
       body.append(card);
     }
   } else if (tab === 'diario') {
+    const stage = geninStage(c);
+    if (stage) {
+      body.append(row('Sensei', CHARACTERS[senseiId(c)].name),
+        row('Equipe', [c.profile.name, ...teamMembers(c).map((id) => CHARACTERS[id].name)].join(' · ')),
+        el('p', '', objective(c)));
+    }
     const ol = el('ol', 'log');
     for (const l of c.log.slice(0, 60)) ol.append(el('li', '', `Dia ${l.day} · ${l.text}`));
     body.append(ol);
@@ -1231,12 +1634,55 @@ function renderMenu() {
     body.append(row(`Dia ${EXAM_DAY} · Exame de graduação`, ex === 'aprovado' ? 'aprovado' : ex === 'reprovado' ? `repescagem no dia ${c.flags.repescagem}` : 'a fazer'));
   } else if (tab === 'itens') {
     body.append(row('Ryō', String(c.ryo)));
-    for (const [id, n] of Object.entries(c.inventory)) if (n > 0) body.append(row(ITEMS[id]?.name ?? id, `× ${n}`));
+    if (Object.keys(GEAR).some((id) => c!.inventory[id])) body.append(el('h3', '', 'Equipamento ativo'));
+    for (const [id, gear] of Object.entries(GEAR)) {
+      if (!c.inventory[id]) continue;
+      const active = id === equippedGear(c);
+      const card = el('div', 'card');
+      const button = el('button', '', active ? 'Desequipar' : 'Equipar');
+      button.onclick = () => {
+        if (!c) return;
+        if (active) delete c.flags.equipado; else c.flags.equipado = id;
+        dirty = true;
+        save();
+        renderMenu();
+      };
+      const benefit = 'stat' in gear ? `+${gear.bonus} ${gear.stat}` : `−${Math.round(gear.reduction * 100)}% de dano recebido`;
+      card.append(row(gear.name, benefit), button);
+      body.append(card);
+    }
+    for (const [id, n] of Object.entries(c.inventory)) if (n > 0 && !Object.hasOwn(GEAR, id)) body.append(row(ITEMS[id]?.name ?? id, `× ${n}`));
     if ((c.inventory.onigiri ?? 0) > 0) {
       const b = el('button', '', 'Comer onigiri (+12 resistência)') as HTMLButtonElement;
       b.onclick = () => { if (!c) return; c.inventory.onigiri--; c.stamina = Math.min(maxVitals(c.stats).stamina, c.stamina + 12); dirty = true; refresh(); renderMenu(); };
       body.append(el('br'), b);
     }
+  } else if (tab === 'mapa') {
+    const current = map();
+    const atlas = document.createElement('canvas');
+    atlas.width = 248;
+    atlas.height = Math.round(248 * current.h / current.w);
+    atlas.setAttribute('role', 'img');
+    atlas.setAttribute('aria-label', `Mapa local de ${current.name}`);
+    atlas.style.cssText = 'width:100%;max-width:496px;height:auto;image-rendering:pixelated';
+    const chart = atlas.getContext('2d')!;
+    chart.imageSmoothingEnabled = false;
+    chart.drawImage(current.ground, 0, 0, atlas.width, atlas.height);
+    const dot = (x: number, y: number, color: string) => {
+      const mx = x / current.w * atlas.width, my = y / current.h * atlas.height;
+      px(chart, mx - 3, my - 3, 7, 7, '#302820');
+      px(chart, mx - 2, my - 2, 5, 5, color);
+    };
+    for (const exit of current.exits) dot(exit.rect.x + exit.rect.w / 2, exit.rect.y + exit.rect.h / 2, '#9cddd6');
+    const target = questTarget(false);
+    if (target) dot(target.x, target.y, '#f0c27a');
+    if (c.map === 'campo' && geninStage(c) === 'busca' && !c.flags['tora-rastro']) {
+      for (const trail of TORA_TRAILS) dot(trail.x, trail.y, '#dca787');
+      body.append(el('p', 'muted', 'Rosa marca os rastros que você pode examinar.'));
+    }
+    dot(c.x, c.y, '#fff7dd');
+    body.append(el('h3', '', current.name), atlas, el('p', 'muted', 'Branco: você · Dourado: objetivo · Azul: saída'));
+    for (const other of Object.values(maps)) if (other.id !== current.id) body.append(row(other.name, other.region));
   } else if (tab === 'sistema') {
     const wrap = el('div', 'btnrow');
     const b1 = el('button', '', 'Salvar agora') as HTMLButtonElement; b1.onclick = () => save(true);
@@ -1245,7 +1691,7 @@ function renderMenu() {
     const b4 = el('button', '', `Música: ${audio.music ? 'ligada' : 'desligada'}`) as HTMLButtonElement; b4.onclick = () => { audio.setMusic(!audio.music); renderMenu(); };
     const b5 = el('button', '', `Efeitos: ${audio.sfxOn ? 'ligados' : 'desligados'}`) as HTMLButtonElement; b5.onclick = () => { audio.setSfx(!audio.sfxOn); renderMenu(); };
     wrap.append(b1, b4, b5, b2, b3);
-    body.append(wrap, el('p', 'muted', `Versão 0.3.1 · Dificuldade ${LABELS[c.settings.difficulty]} · ${LABELS[c.settings.fidelity]} · Tempo de jogo ${Math.round(c.playtime / 60)} min.`));
+    body.append(wrap, el('p', 'muted', `Versão ${GAME_VERSION} · Dificuldade ${LABELS[c.settings.difficulty]} · ${LABELS[c.settings.fidelity]} · Tempo de jogo ${Math.round(c.playtime / 60)} min.`));
   }
 }
 $('btnMenu').onclick = openMenu;
@@ -1331,6 +1777,19 @@ window.addEventListener('keyup', (e) => {
   const k = e.key.toLowerCase();
   if (mini && (k === 'e' || k === ' ' || k === 'enter')) mini.press(false);
 });
+const miniAction = $<HTMLButtonElement>('mini-action');
+miniAction.onpointerdown = (event) => {
+  if (!mini) return;
+  event.preventDefault();
+  miniAction.setPointerCapture(event.pointerId);
+  mini.press(true);
+};
+miniAction.onlostpointercapture = () => mini?.press(false);
+miniAction.onpointerup = () => mini?.press(false);
+miniAction.onpointercancel = () => mini?.press(false);
+miniAction.onclick = (event) => {
+  if (event.detail === 0) { mini?.press(true); mini?.press(false); }
+};
 $('app').addEventListener('pointerdown', (e) => { if (mini && !(e.target instanceof HTMLButtonElement)) mini.press(true); });
 window.addEventListener('pointerup', () => mini?.press(false));
 window.addEventListener('blur', () => held.clear());
@@ -1376,6 +1835,8 @@ if (import.meta.env.DEV) {
       choose: (id: string) => closeDialog(id),
       get dialog() { return dialogResolve ? { lines: dialogLines, index: dialogIndex, choices: dialogChoices } : null; },
       get contact() { return contact; },
+      get landmarks() { return { npcs: npcs.map(({ id, x, y }) => ({ id, x, y })), spots: worldSpots(), exits: map().exits }; },
+      walkable(x: number, y: number) { return !blocked(map(), x, y) && !npcs.some((n) => Math.abs(x - n.x) < 8 && Math.abs(y - n.y) < 5); },
       battle: (id: string) => runBattle(id, 'Treino de luta'),
       train: (k: 'troncos' | 'alvos' | 'meditacao') => trainSpot(k),
       get mini() { return mini; },

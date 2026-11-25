@@ -1,7 +1,34 @@
 # Status do desenvolvimento
 
-**Versão atual:** 0.3.2, Era da Academia (Etapas 1 e 2 do [Projeto Mestre](Projeto_Mestre.md)).
-**Jogar:** abra `naruto_ascensao_v0.3.2.html` no navegador. Funciona offline.
+**Versão atual:** 0.4.2, Fundação, Academia Ninja e Vida Genin do [Projeto Mestre](Projeto_Mestre.md).
+**Jogar:** abra `naruto_ascensao_v0.4.2.html` no navegador. Funciona offline.
+
+## O que mudou na 0.4.2
+
+- **O lacre trocado.** Três pistas em Konoha revelam o destino de uma encomenda. O caso varia por jornada. Um colega pode ajudar a interpretar uma pista, e a resposta certa rende 120 ryō.
+- **A ronda das lanternas.** A equipe confere dois postos no Campo de Treino e enfrenta Maki, uma Genin da guarda. O apoio escolhido altera a distância inicial ou o fôlego da adversária. A derrota permite tentar de novo, e o relatório da vitória vale 150 ryō.
+- As missões entraram depois de Tora. Saves que já chegaram a Tazuna passam a ter acesso aos dois trabalhos e conservam a decisão registrada sobre a escolta.
+- O livro, o lacre, o recibo e os postes de ronda foram desenhados em Canvas na grade da pixel art do jogo. Maki usa o renderizador de personagens com cabelo, traje e paleta próprios.
+- **Verificação da 0.4.2.** TypeScript, build e 34 testes automatizados. No Chrome, o HTML offline passou pelas duas missões a partir de um save de teste na devolução de Tora, com retomadas entre objetivos. O teste conferiu resposta errada, escolha certa, rendição, nova abertura de combate, vitória, pagamento e conversa com Tazuna. Uma segunda rodada percorreu toda a campanha em um novo slot até Tazuna, com exploração acelerada. A captura de Tora foi concluída com toque emulado no Chrome a 390 × 844. Um save compatível com a v0.4.1 retomou com as novas missões e preservou a decisão da escolta.
+
+## O que mudou na 0.4.1
+
+- A equipe se divide na tarefa dos suprimentos. Cada colega guarda uma caixa e ajuda a conferir o material.
+- As escolhas de apoio alteram os sinos e a captura de Tora. Rastrear mostra a abertura, bloquear prolonga o tempo disponível e distrair cobre um erro. A equipe e a semente da jornada determinam qual rastro é fresco e onde Tora está.
+- Tora, rastros e caixas foram desenhados em Canvas para a mesma grade de pixel art do jogo. Controles de tempo têm um botão próprio para toque.
+- Colegas têm preferências na IA para pressão, guarda, alcance e fintas. Impacto, golpe defendido, esquiva e clone têm apresentação distinta.
+- A graduação dá uma nota a partir da prova escrita, dos selos, do domínio do Bunshin e do controle de chakra. O exame mostra a nota, as parcelas e o mínimo para aprovação.
+- **Verificação da 0.4.1.** 33 testes automatizados e compilação de TypeScript e Vite. No Chrome, uma jornada nova percorreu a matrícula, as oito aulas, a graduação, o teste dos sinos, as duas missões D e o encontro com Tazuna. A automação acelerou a exploração e usou os controles e menus, sem teletransporte ou edição do save. O HTML offline foi aberto separadamente para verificar criação e retomada, e o mapa foi revisado no layout de 390 × 844.
+
+## O que mudou na 0.4.0
+
+- **Fundação:** criação e interface reaproveitadas, mapa local com posição, objetivo e saídas. Saves antigos recebem os novos NPCs preservando aparência, progresso e vínculos.
+- **Academia:** Ino, Shikamaru, Chōji, Kiba, Hinata e Shino têm visual próprio, assento, rotina, diálogo, atributos, exame e duelos. Iruka oferece reposição das aulas perdidas.
+- **Combate:** efeitos em pixels desenhados pelo Canvas para antecipação, impacto, guarda, aura e fumaça. Bunshin cria cópias, Henge troca o visual do lutador e Kawarimi deixa um tronco na substituição. Katon e Kage Bunshin entram em duelos da Vida Genin. As referências foram usadas para estudar timing, sem importar sprites das folhas.
+- **Vida Genin:** dois colegas e um sensei por equipe, com sorteio pela semente do save. O modo Alternativo permite combinações com os integrantes da Equipe 7. A rota em que o jogador substitui Naruto usa Kakashi. As demais podem ter Asuma, Kurenai, Naomi ou Kakashi, conforme a rota.
+- **Progressão:** encontro com o sensei, teste dos sinos, coleta de suprimentos, captura de Tora e prólogo da escolta de Tazuna. Loja e inventário permitem comprar, equipar e trocar luvas, bolsa e colete com benefícios em combate. A sessão continua disponível para treino e exploração após o prólogo.
+- A travessia para o País das Ondas, o combate com Zabuza e o Exame Chūnin pertencem à continuação do Clássico.
+- **Verificação da 0.4.0:** 28 testes automatizados, checagem TypeScript e compilação. No Chrome, a build offline passou por criação, matrícula, exame a partir de um checkpoint do dia 10, graduação, prova dos sinos, equipar as luvas pelo inventário, missões D, prólogo, duelo com Ino e teste de layout de 390 × 844. O teste usou pontos de retomada para as transições longas.
 
 ## O que mudou na 0.3.2
 
@@ -36,7 +63,7 @@ A campanha agora acontece no mesmo mundo da cena de referência da 0.2.2. Antes,
   - Rua da Academia, a cena de referência, estendida para o sul.
   - Campo de Treino, novo.
   - Sala de aula de Iruka, nova.
-  
+
   Câmera em tela cheia com escala inteira de pixels, transições com fade, letreiro com o nome do lugar e iluminação de tarde e de noite com lampiões.
 - **NPCs simulados:** Iruka, Naruto, Sasuke, Sakura, Emi (original), Daichi (original) e Sr. Gen (original).
   - Cada um tem idade, patente, clã, atributos, técnicas, personalidade, objetivos, rotina por período, vínculos e memória.
@@ -51,14 +78,14 @@ A campanha agora acontece no mesmo mundo da cena de referência da 0.2.2. Antes,
   - Bunshin
   - História de Konoha
   - Revisão
-  
+
   Quem falta à aula de uma técnica pode ter aula de reforço com Iruka à tarde.
 - **Treino:** quatro minijogos que dão evolução de atributo e domínio:
   - Troncos: tempo do golpe.
   - Alvos: mira de kunai.
   - Meditação: manter o chakra dentro da faixa.
   - Selos: sequência de selos.
-  
+
   O treino tem custo de resistência e fadiga.
 - **Combate por turnos:**
   - Três zonas de distância e iniciativa por velocidade.
@@ -101,11 +128,8 @@ A campanha agora acontece no mesmo mundo da cena de referência da 0.2.2. Antes,
 
 ## Pendente
 
-- **Efeitos visuais de jutsu:** aguardando referência. Hoje as técnicas aparecem como texto, e os clones como cópias translúcidas do sprite.
-- **Etapa 3, Vida Genin:** sensei, missões de rank D, inventário de equipamentos e os primeiros arcos de Naruto clássico.
-- **Mais colegas da turma canônica:** Ino, Shikamaru, Chōji, Kiba, Hinata e Shino. Ainda não têm sprite.
-- **Minimapa e mapa mundial.**
-- **Repetir uma aula perdida:** hoje só dá para recuperar as técnicas, com a aula de reforço.
+- **Continuação do Clássico:** viagem ao País das Ondas e arcos seguintes.
+- **Mapa mundial:** o menu já mostra o mapa local de cada área jogável de Konoha.
 
 ## Bugs conhecidos
 

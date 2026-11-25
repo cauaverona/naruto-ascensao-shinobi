@@ -2,7 +2,7 @@
 // A música é original: uma melodia de cordas dedilhadas na escala pentatônica Hirajoshi (ré),
 // em volume baixo. Os efeitos são cliques curtos de interface, no estilo de jogos 2D.
 export type Track = 'vila' | 'luta';
-export type Sfx = 'hover' | 'confirm' | 'back' | 'tick';
+export type Sfx = 'hover' | 'confirm' | 'back' | 'tick' | 'strike' | 'impact' | 'chakra' | 'guard';
 
 type Bar = (number | null)[];
 interface TrackDef { bpm: number; melody: Bar[]; bass: Bar[] }
@@ -176,6 +176,10 @@ class GameAudio {
       o.start(at); o.stop(at + len + 0.02);
     };
     switch (kind) {
+      case 'strike': blip(310, 135, t, 0.12, 0.13, 'triangle'); break;
+      case 'impact': blip(125, 55, t, 0.16, 0.18, 'triangle'); break;
+      case 'guard': blip(415, 180, t, 0.09, 0.12, 'triangle'); break;
+      case 'chakra': blip(270, 420, t, 0.16, 0.12, 'sine'); break;
       case 'hover': blip(1250, 1250, t, 0.035, 0.22); break;
       case 'tick': blip(900, 820, t, 0.03, 0.16); break;
       case 'confirm': blip(660, 660, t, 0.06, 0.3); blip(990, 990, t + 0.055, 0.1, 0.3); break;

@@ -37,6 +37,16 @@ export function talk(c: Campaign, id: string): string[] {
       return ['Levo os recados da turma até o fim da rua. Se ouvir passos atrás de você, sou eu tentando chegar antes do sino!'];
     case 'daichi':
       return b.rivalidade >= 15 ? ['Da próxima vez eu não pego leve. Força ganha de truque, você vai ver.'] : ['Meu pai faz kunai na forja da rua de baixo. Eu prefiro usar os punhos mesmo.'];
+    case 'ino': return [b.amizade >= 15 ? 'Se você me ajudar a revisar os selos, eu te ajudo com a mira.' : 'A próxima prova vai dizer quem estudou de verdade. Eu estou pronta.'];
+    case 'shikamaru': return [b.respeito >= 10 ? 'Você viu a abertura antes de atacar. Isso poupa trabalho.' : 'Se escolher a posição certa, dá para resolver uma luta com metade do esforço.'];
+    case 'choji': return [b.amizade >= 15 ? 'Divido meu lanche com você. Deixa só um pouco para o Shikamaru.' : 'Eu guardo meu lanche para depois do treino. Senão a fome vence antes de mim.'];
+    case 'kiba': return [b.rivalidade >= 15 ? 'Você ganhou daquela vez. Eu e o Akamaru já sabemos como empatar.' : 'O Akamaru percebeu você antes de eu ouvir seus passos. Quer apostar corrida?'];
+    case 'hinata': return [b.confianca >= 10 ? 'Eu consegui sustentar a postura durante todo o treino. Obrigada por me incentivar.' : 'Eu estou treinando a postura. Se eu respirar devagar, consigo me concentrar.'];
+    case 'shino': return [b.respeito >= 10 ? 'Você também observa antes de avançar. É uma boa maneira de se manter em segurança.' : 'A trilha muda depois da chuva. Observe as marcas no chão antes de seguir.'];
+    case 'kakashi': return ['Antes de sair da vila, confira onde estão seus companheiros.'];
+    case 'asuma': return ['Quando alguém da equipe perde o ritmo, ajuste o seu. Cheguem juntos.'];
+    case 'kurenai': return ['A primeira impressão pode enganar. Olhe de novo antes de tomar uma decisão.'];
+    case 'naomi': return ['Revisem o equipamento e o trajeto no diário antes de partir.'];
     case 'gen':
       return ['Bom dia! Kunai, shuriken e onigiri fresquinho. Os primeiros clientes são sempre os que passam cedo pela Academia.'];
   }

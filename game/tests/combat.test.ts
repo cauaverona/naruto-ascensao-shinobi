@@ -13,6 +13,55 @@ function duel(seed = 1): Battle {
 }
 
 describe('combate', () => {
+  it('faz Kiba pressionar e Shino manter alcance mesmo com atributos iguais', () => {
+    const habits = (id: string) => Array.from({ length: 16 }, (_, i) => {
+      const battle = duel(1);
+      const fighter = battle.fighters[1];
+      fighter.id = id;
+      fighter.personality = undefined;
+      fighter.stats = baseStats(3);
+      battle.distance = 2;
+      return chooseAction(battle, 1, new Rng(i + 1)).type;
+    });
+    expect(habits('kiba').filter((action) => action === 'taijutsu' || action === 'advance').length).toBeGreaterThan(8);
+    expect(habits('shino').filter((action) => action === 'shuriken').length).toBeGreaterThan(8);
+  });
+
+  it('distingue no evento um golpe em guarda de um acerto aberto', () => {
+    const battle = duel(7);
+    const foe = battle.fighters[1];
+    foe.stats.Velocidade = 20;
+    for (let i = 0; i < 10; i++) {
+      const events = resolveRound(battle, [{ type: 'taijutsu' }, { type: 'defend' }]);
+      const hit = events.find((event) => event.t === 'hit' && event.who === 1);
+      if (hit?.t === 'hit') { expect(hit.guarded).toBe(true); return; }
+    }
+    throw new Error('O ataque deveria acertar a guarda neste cenário.');
+  });
+  it('Katon tem alcance, gasta chakra no disparo e emite evento visual', () => {
+    const battle = duel(5);
+    const fighter = battle.fighters[0];
+    fighter.jutsus.gokakyu = 100;
+    const option = () => available(battle, 0).find(({ action }) => action.type === 'jutsu' && action.id === 'gokakyu');
+    expect(option()?.ok).toBe(false);
+    expect(option()?.why).toBe('Fora do alcance');
+    battle.distance = 1;
+    expect(option()?.ok).toBe(true);
+    let cast = false;
+    for (let seed = 1; seed <= 20; seed++) {
+      const attempt = duel(seed);
+      attempt.distance = 1;
+      const player = attempt.fighters[0];
+      player.jutsus.gokakyu = 100;
+      const before = player.chakra;
+      const events = resolveRound(attempt, [{ type: 'jutsu', id: 'gokakyu' }, { type: 'defend' }]);
+      if (!events.some((event) => event.t === 'technique')) continue;
+      expect(player.chakra).toBeLessThan(before);
+      cast = true;
+      break;
+    }
+    expect(cast).toBe(true);
+  });
   it('substituição anula o golpe e deixa o defensor atrás do atacante', () => {
     const b = duel(7);
     b.fighters[0].status.substitution = true;

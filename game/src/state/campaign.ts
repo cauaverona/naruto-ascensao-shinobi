@@ -10,7 +10,7 @@ import { Rng } from '../core/rng';
 export const SCHEMA = 3;
 /** Porta de casa, na casa vermelha do sul da Rua da Academia. */
 export const HOME_SPOT = { x: 117, y: 437 };
-export const GAME_VERSION = '0.3.2';
+export const GAME_VERSION = '0.4.2';
 
 export interface Profile extends Look {
   name: string; sex: string; village: string; clan: string; element: string;

@@ -1,6 +1,5 @@
 // Catálogo de técnicas (seção 10). Estrutura preparada para todas as eras.
-// Só as técnicas com `era: 'academia'` podem ser aprendidas nesta versão; as demais ficam no
-// catálogo como base de dados e aparecem para o jogador apenas quando forem descobertas.
+// O catálogo inclui as técnicas da Academia e técnicas de combate usadas na Vida Genin.
 import type { Element, Stat } from './stats';
 
 export type JutsuCategory = 'Ninjutsu' | 'Taijutsu' | 'Genjutsu' | 'Bukijutsu' | 'Fūinjutsu';
@@ -51,12 +50,12 @@ export const JUTSUS: Record<string, Jutsu> = {
     trains: ['Ninjutsu', 'Controle de chakra'],
     description: 'Cria cópias ilusórias sem corpo. Os clones não causam dano, mas podem atrair os golpes do adversário. Exige controle fino de chakra.',
   },
-  // ——— Catálogo das eras seguintes (ainda não disponíveis) ———
+  // ——— Vida Genin ———
   'kage-bunshin': {
     id: 'kage-bunshin', name: 'Kage Bunshin no Jutsu', meaning: 'Técnica do Clone das Sombras', category: 'Ninjutsu', rank: 'B', era: 'classico',
     acquisition: 'Pergaminho proibido de Konoha', requirements: { Chakra: 12 }, chakraCost: 18, staminaCost: 0, range: [0, 2], effect: 'clones',
     trains: ['Ninjutsu', 'Chakra'], evolvesTo: ['tajuu-kage-bunshin'],
-    description: 'Clones com corpo físico que dividem o chakra do usuário.',
+    description: 'Forma mais cópias que o Bunshin comum e exige muito mais chakra.',
   },
   gokakyu: {
     id: 'gokakyu', name: 'Katon: Gōkakyū no Jutsu', meaning: 'Grande Bola de Fogo', category: 'Ninjutsu', rank: 'C', element: 'Fogo', era: 'classico',
