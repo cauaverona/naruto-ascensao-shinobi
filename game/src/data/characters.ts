@@ -8,6 +8,7 @@ export type Period = 0 | 1 | 2; // manhã, tarde, noite
 
 export interface Look {
   skin: string; hair: string; coat: string; cut: string;
+  sex?: string;
   clan?: string; trim?: string; accessory?: string; mark?: string; band?: string;
   outfit?: string; scarf?: string; accessoryTone?: string;
 }
