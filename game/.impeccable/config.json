@@ -1,0 +1,17 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "side-tab",
+        "value": "*",
+        "files": [
+          "src/styles.css"
+        ],
+        "createdAt": "2026-11-25T13:11:39.635Z",
+        "reason": "Claude triage: flagged borders are zero-size CSS triangles (menu cursor, d-pad arrows, cycle arrows), not side-tab accents on cards"
+      }
+    ]
+  }
+}
