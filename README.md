@@ -10,6 +10,7 @@ Use **WASD** ou as **setas** para andar, **E** para interagir e **Esc** para abr
 
 ## Arquivos do projeto
 
+- [Projeto Mestre](Projeto_Mestre.md), visão completa do jogo, sistemas e etapas de desenvolvimento.
 - [Versão 0.2.2](naruto_ascensao_v0.2.2.html), revisão dos personagens.
 - [Versão 0.2.1](naruto_ascensao_v0.2.1.html), primeira versão da Rua da Academia.
 - [Versão 0.2.0](naruto_ascensao_v0.2.0.html), fundação jogável da Etapa 1.
