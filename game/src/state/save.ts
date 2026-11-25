@@ -1,6 +1,6 @@
 // Slots, salvamento e migração de formatos antigos (v0.2.0 usava schema 1 e 2 nas mesmas chaves).
 import {
-  SCHEMA, GAME_VERSION, HOME_SPOT, emptyStatXp, npcInitial, type Campaign, type LogEntry,
+  SCHEMA, GAME_VERSION, HOME_SPOT, LOOK_DEFAULTS, emptyStatXp, npcInitial, type Campaign, type LogEntry,
 } from './campaign';
 import { baseStats, maxVitals, STATS, type StatBlock } from '../data/stats';
 
@@ -20,6 +20,7 @@ export function decode(raw: string): Campaign {
   if (s.schema === 1 || s.schema === 2) return migrateV2(s);
   if (s.schema !== SCHEMA) throw new Error('Formato incompatível');
   validate(s);
+  s.profile = { ...LOOK_DEFAULTS, ...s.profile };
   return s as Campaign;
 }
 
@@ -55,6 +56,7 @@ function migrateV2(old: V2Save): Campaign {
       name: p.name, sex: p.sex ?? 'Masculino', village: p.village ?? 'Konoha', clan: p.clan ?? 'Sem clã',
       element: p.element ?? 'Fogo', talent: p.talent ?? 'Percepção', attribute: p.attribute ?? 'Vitalidade',
       past: p.past ?? 'Família de artesãos', skin: p.skin ?? 'Dourada', hair: p.hair ?? 'Preto', cut: p.cut ?? 'Curto', coat: p.coat ?? 'Índigo',
+      ...LOOK_DEFAULTS,
     },
     stats, statXp: emptyStatXp(), rank: 'Estudante da Academia', xp: 0, reputation: 0, age: 12,
     day: Math.max(1, old.day ?? 1), period: 0, actions: 3, hp: v.hp, chakra: v.chakra, stamina: v.stamina, ryo: 120,

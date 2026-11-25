@@ -1,7 +1,19 @@
 # Status do desenvolvimento
 
-**Versão atual:** 0.3.0, Era da Academia (Etapas 1 e 2 do [Projeto Mestre](Projeto_Mestre.md)).
-**Jogar:** abra `naruto_ascensao_v0.3.0.html` no navegador. Funciona offline.
+**Versão atual:** 0.3.1, Era da Academia (Etapas 1 e 2 do [Projeto Mestre](Projeto_Mestre.md)).
+**Jogar:** abra `naruto_ascensao_v0.3.1.html` no navegador. Funciona offline.
+
+## O que mudou na 0.3.1
+
+- **Personagem:** na criação, só o nome e a aparência são escolhidos. Clã, aldeia, afinidade, talento, atributo e histórico são sorteados ao começar e revelados na abertura. Clãs comuns saem com mais frequência; linhagens raras são surpresas.
+- **Aparência ampliada:**
+  - 8 tons de pele, 14 cores de cabelo e 14 cores de traje.
+  - 10 penteados: curto, franja, preso, rabo alto, chiquinhas, coque, trança, espetado, longo e cacheado.
+  - 8 cores de cachecol e 7 cores de pano da bandana.
+  - 4 acessórios: óculos, máscara, faixa na testa e curativo.
+  - 3 marcas no rosto: cicatriz, bigodes e marcas vermelhas.
+- **Som:** trilha original sintetizada (pentatônica Hirajoshi, cordas dedilhadas), baixinha, com uma versão mais rápida no combate. Clique ao passar o mouse e ao confirmar nos menus. Liga e desliga na tela de título e no menu Sistema.
+- **Seta de objetivo:** mostra para onde ir. Fica em cima do alvo quando ele está na tela, na borda quando está fora, e aponta a saída quando o alvo está em outro mapa.
 
 ## O que mudou na 0.3.0
 
@@ -81,7 +93,6 @@ A campanha agora acontece no mesmo mundo da cena de referência da 0.2.2. Antes,
 ## Pendente
 
 - **Efeitos visuais de jutsu:** aguardando referência. Hoje as técnicas aparecem como texto, e os clones como cópias translúcidas do sprite.
-- **Som e música.**
 - **Etapa 3, Vida Genin:** sensei, missões de rank D, inventário de equipamentos e os primeiros arcos de Naruto clássico.
 - **Mais colegas da turma canônica:** Ino, Shikamaru, Chōji, Kiba, Hinata e Shino. Ainda não têm sprite.
 - **Minimapa e mapa mundial.**
@@ -118,4 +129,3 @@ Comandos, dentro de `game/`:
 
 1. Efeitos visuais das técnicas, com a referência do Nicolas.
 2. Etapa 3: equipes, sensei, missões e primeiros acontecimentos do clássico.
-3. Som.

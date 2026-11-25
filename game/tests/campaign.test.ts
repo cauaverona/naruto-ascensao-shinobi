@@ -8,6 +8,7 @@ import { EXAM_DAY } from '../src/data/academy';
 const profile: Profile = {
   name: 'Kenji', sex: 'Masculino', village: 'Konoha', clan: 'Sem clã', element: 'Fogo', talent: 'Taijutsu',
   attribute: 'Velocidade', past: 'Família de artesãos', skin: 'Clara', hair: 'Preto', cut: 'Curto', coat: 'Índigo',
+  trim: 'Laranja', accessory: 'Nenhum', mark: 'Nenhuma', band: 'Azul',
 };
 const fresh = (fidelity: Campaign['settings']['fidelity'] = 'equilibrado', seed = 42) =>
   newCampaign(profile, { difficulty: 'normal', fidelity }, seed);

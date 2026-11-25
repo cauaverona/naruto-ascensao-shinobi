@@ -1,10 +1,10 @@
 # Naruto: Ascensão Shinobi
 
-RPG 2D em pixel art, jogo de fã sem fins lucrativos. A versão mais recente é a **0.3.0**: a Era da Academia completa, da matrícula ao exame de graduação.
+RPG 2D em pixel art, jogo de fã sem fins lucrativos. A versão mais recente é a **0.3.1**: a Era da Academia completa, da matrícula ao exame de graduação.
 
 ## Jogar
 
-Abra `naruto_ascensao_v0.3.0.html` no navegador. O arquivo contém o jogo inteiro e funciona offline.
+Abra `naruto_ascensao_v0.3.1.html` no navegador. O arquivo contém o jogo inteiro e funciona offline.
 
 Controles:
 
@@ -26,6 +26,7 @@ O andamento, os testes e a arquitetura estão em [STATUS.md](STATUS.md).
 
 - [Projeto Mestre](Projeto_Mestre.md), visão completa do jogo, sistemas e etapas de desenvolvimento.
 - [Status do desenvolvimento](STATUS.md), com o que foi feito, o que falta, os testes e a arquitetura.
+- [Versão 0.3.1](naruto_ascensao_v0.3.1.html): só a aparência é escolhida e o resto é sorteado; mais opções de visual, som e seta de objetivo.
 - [Versão 0.3.0](naruto_ascensao_v0.3.0.html): campanha unificada no mundo da cena de referência, com aulas, treino, combate e exame.
 - [Versão 0.2.2](naruto_ascensao_v0.2.2.html), revisão dos personagens.
 - [Versão 0.2.1](naruto_ascensao_v0.2.1.html), primeira versão da Rua da Academia.

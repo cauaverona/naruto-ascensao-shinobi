@@ -6,7 +6,7 @@ export type SpriteRole = 'player' | 'iruka' | 'emi' | 'gen' | 'naruto' | 'sasuke
 export type MapId = 'rua' | 'campo' | 'sala';
 export type Period = 0 | 1 | 2; // manhã, tarde, noite
 
-export interface Look { skin: string; hair: string; coat: string; cut: string; clan?: string }
+export interface Look { skin: string; hair: string; coat: string; cut: string; clan?: string; trim?: string; accessory?: string; mark?: string; band?: string }
 
 export interface Personality {
   /** 0..1 — tendência a atacar em vez de se proteger. */

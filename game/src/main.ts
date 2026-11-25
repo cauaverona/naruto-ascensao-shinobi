@@ -1,8 +1,8 @@
 // Ascensão Shinobi v0.3.0 — controlador principal: telas, exploração, aulas, treino, noite e menu.
 import './styles.css';
 import { CHARACTERS, CLASSMATES, type MapId, type Period } from './data/characters';
-import { CLAN_NAMES, VILLAGES, PASTS, TALENTS, ATTRIBUTE_PICKS, origin, clanByName } from './data/clans';
-import { ELEMENTS, ACADEMY_STATS, combatPower, maxVitals, type Stat } from './data/stats';
+import { origin, clanByName } from './data/clans';
+import { ACADEMY_STATS, combatPower, maxVitals, type Stat } from './data/stats';
 import { LESSONS, PERIODS, WEEKDAYS, EXAM_DAY, ITEMS, QUESTIONS } from './data/academy';
 import { JUTSUS, castChance } from './data/jutsus';
 import { newCampaign, addLog, type Campaign, type Profile, type Settings } from './state/campaign';
@@ -15,8 +15,9 @@ import { KunaiGame, StrikeGame, ChakraGame, SealsGame, grade, type Minigame } fr
 import { BattleScene } from './scenes/battle';
 import { makeFighter, startBattle } from './combat/engine';
 import { randomSeed, Rng } from './core/rng';
-import { drawActor, portrait, idlePose, spritesReady, clothes, skinSet, hairSet, CUTS, type Actor, type Dir } from './render/sprites';
+import { drawActor, portrait, idlePose, spritesReady, clothes, skinSet, hairSet, trimSet, bandSet, CUTS, ACCESSORIES, MARKS, type Actor, type Dir } from './render/sprites';
 import { px } from './render/gfx';
+import { audio } from './audio';
 import { blocked, type GameMap } from './render/maps/types';
 import { buildStreet } from './render/maps/street';
 import { buildField } from './render/maps/field';
@@ -71,6 +72,7 @@ function openTitle() {
   const add = (label: string, fn: () => void) => { const b = document.createElement('button'); b.textContent = label; b.onclick = fn; b.onmouseenter = () => setCurrent(box, menuButtons(box).indexOf(b)); box.append(b); };
   if (info?.kind === 'ok') add('Continuar', () => startGame(lastSlot, info.campaign, info.raw));
   add('Jogar', openSlots);
+  add(`Som: ${audio.enabled ? 'ligado' : 'desligado'}`, () => { audio.toggleAll(); openTitle(); });
   add('Controles', () => toastTitle('Andar: WASD ou setas · Interagir: E ou Enter · Menu: Esc · No celular, use o direcional e o botão A.'));
   setCurrent(box, 0);
 }
@@ -126,30 +128,21 @@ function openSlots() {
 type Key = keyof Profile | 'difficulty' | 'fidelity';
 interface Opt { key: Key; label: string; values: readonly string[]; describe?: (v: string) => string }
 const LABELS: Record<string, string> = { facil: 'Fácil', normal: 'Normal', dificil: 'Difícil', fiel: 'Fiel ao anime', equilibrado: 'Equilibrado', alternativo: 'Mundo alternativo' };
-const TALENT_TEXT: Record<string, string> = {
-  'Percepção': 'Nota detalhes que os outros perdem. Ajuda a mirar e a enxergar através de clones.',
-  'Controle de chakra': 'Chakra preciso. Técnicas falham menos e gastam melhor a reserva.',
-  Taijutsu: 'Corpo treinado desde cedo. Golpes mais fortes no corpo a corpo.',
-  'Inteligência': 'Aprende rápido nas aulas e lê o adversário com calma.',
-  Bukijutsu: 'Mãos firmes com kunai e shuriken.',
-};
 const CREATE_TABS: { id: string; label: string; opts: Opt[] }[] = [
-  { id: 'id', label: 'Identidade', opts: [
+  { id: 'body', label: 'Corpo', opts: [
     { key: 'sex', label: 'Sexo', values: ['Masculino', 'Feminino'] },
-    { key: 'village', label: 'Aldeia natal', values: VILLAGES, describe: (v) => (v === 'Konoha' ? 'Nascido na Vila da Folha.' : `Nascido em ${v}, criado em Konoha sob tutela da Academia.`) },
-    { key: 'clan', label: 'Clã', values: [...CLAN_NAMES, 'Sortear'], describe: (v) => (v === 'Sortear' ? 'O destino escolhe seu sangue.' : clanByName(v).blurb) },
-    { key: 'element', label: 'Afinidade', values: [...ELEMENTS, 'Sortear'], describe: (v) => (v === 'Sortear' ? 'Sua natureza de chakra será sorteada.' : `Natureza de chakra: ${v}. Ela ainda vai demorar a despertar.`) },
-  ] },
-  { id: 'look', label: 'Aparência', opts: [
     { key: 'skin', label: 'Pele', values: Object.keys(skinSet) },
-    { key: 'hair', label: 'Cabelo', values: Object.keys(hairSet) },
-    { key: 'cut', label: 'Penteado', values: CUTS },
-    { key: 'coat', label: 'Traje', values: Object.keys(clothes) },
+    { key: 'mark', label: 'Marca no rosto', values: MARKS },
+    { key: 'accessory', label: 'Acessório', values: ACCESSORIES },
   ] },
-  { id: 'origin', label: 'Origem', opts: [
-    { key: 'talent', label: 'Talento', values: TALENTS, describe: (v) => TALENT_TEXT[v] ?? '' },
-    { key: 'attribute', label: 'Atributo +2', values: ATTRIBUTE_PICKS, describe: (v) => `Começa com ${v} mais alto.` },
-    { key: 'past', label: 'Histórico', values: PASTS },
+  { id: 'hair', label: 'Cabelo', opts: [
+    { key: 'hair', label: 'Cor', values: Object.keys(hairSet) },
+    { key: 'cut', label: 'Penteado', values: CUTS },
+  ] },
+  { id: 'outfit', label: 'Roupa', opts: [
+    { key: 'coat', label: 'Traje', values: Object.keys(clothes) },
+    { key: 'trim', label: 'Cachecol', values: Object.keys(trimSet) },
+    { key: 'band', label: 'Pano da bandana', values: Object.keys(bandSet), describe: () => 'Aparece na testa quando você se forma. Também colore a faixa na testa, se escolher esse acessório.' },
   ] },
   { id: 'world', label: 'Mundo', opts: [
     { key: 'difficulty', label: 'Dificuldade', values: ['facil', 'normal', 'dificil'], describe: (v) => ({ facil: 'Adversários mais fracos.', normal: 'O equilíbrio pensado para a campanha.', dificil: 'Adversários batem mais forte.' }[v] ?? '') },
@@ -157,11 +150,14 @@ const CREATE_TABS: { id: string; label: string; opts: Opt[] }[] = [
   ] },
 ];
 const DEFAULTS: Record<Key, string> = {
-  name: '', sex: 'Masculino', village: 'Konoha', clan: 'Sem clã', element: 'Fogo', talent: 'Percepção', attribute: 'Vitalidade',
-  past: 'Família de artesãos', skin: 'Dourada', hair: 'Preto', cut: 'Curto', coat: 'Índigo', difficulty: 'normal', fidelity: 'equilibrado',
+  name: '', sex: 'Masculino', skin: 'Dourada', hair: 'Preto', cut: 'Curto', coat: 'Índigo', difficulty: 'normal', fidelity: 'equilibrado',
+  trim: 'Laranja', accessory: 'Nenhum', mark: 'Nenhuma', band: 'Azul',
+  // O destino do personagem é sorteado quando a jornada começa.
+  village: 'Sortear', clan: 'Sortear', element: 'Sortear', talent: 'Sortear', attribute: 'Sortear', past: 'Sortear',
 };
 let form: Record<Key, string> = { ...DEFAULTS };
 let createTab = 0, createRow = 0, previewDir = 0;
+const DESTINY_NOTE = 'Seu clã, aldeia, afinidade, talento e histórico são sorteados quando a jornada começa. Só a aparência é escolha sua.';
 const PREVIEW_DIRS: Dir[] = ['down', 'right', 'up', 'left'];
 
 function readForm(): { p: Profile; s: Settings } {
@@ -195,7 +191,7 @@ function renderCreate() {
   const d = document.createElement('p'); d.className = 'desc'; d.id = 'optDesc';
   rows.append(d);
   markRow();
-  $('origin').textContent = origin(readForm().p);
+  $('origin').textContent = DESTINY_NOTE;
 }
 function markRow() {
   const opts = CREATE_TABS[createTab].opts;
@@ -228,9 +224,9 @@ function openCreate(i: number) {
 }
 $('rotL').onclick = () => (previewDir = (previewDir + 3) % 4);
 $('rotR').onclick = () => (previewDir = (previewDir + 1) % 4);
-$('f_name').oninput = () => ($('origin').textContent = origin(readForm().p));
+$('f_name').oninput = () => ($('origin').textContent = DESTINY_NOTE);
 $('randomize').onclick = () => {
-  for (const t of CREATE_TABS) for (const o of t.opts) if (o.key !== 'difficulty' && o.key !== 'fidelity') form[o.key] = o.values[Math.floor(Math.random() * o.values.length)];
+  for (const t of CREATE_TABS) for (const o of t.opts) if (t.id !== 'world' && o.key !== 'sex') form[o.key] = o.values[Math.floor(Math.random() * o.values.length)];
   renderCreate();
 };
 $('form').onsubmit = (e) => {
@@ -264,7 +260,8 @@ function startGame(i: number, camp: Campaign, raw: string | null) {
   save();
   refresh();
   if (c.day === 1 && c.quest === 'matricula-ficha' && c.log.length <= 1) {
-    void say(null, [`Manhã do primeiro dia. ${c.profile.name} sai de casa com a ficha da Academia em mente.`, 'A ficha de matrícula fica no quadro de avisos da Rua da Academia, perto da escadaria.']);
+    const cl = clanByName(c.profile.clan);
+    void say(null, [origin(c.profile), `Clã: ${c.profile.clan}. ${cl.blurb}`, `Talento natural: ${c.profile.talent}.`, `Manhã do primeiro dia. ${c.profile.name} sai de casa com a ficha da Academia em mente.`, 'A ficha de matrícula fica no quadro de avisos da Rua da Academia, perto da escadaria.']);
   }
 }
 
@@ -431,6 +428,7 @@ function renderLine() {
 }
 function advanceDialog() {
   if (!dialogResolve) return;
+  audio.sfx('tick');
   if (dialogIndex >= dialogLines.length - 1) { if (!dialogChoices.length) closeDialog(''); return; }
   dialogIndex++;
   renderLine();
@@ -664,9 +662,11 @@ async function runBattle(id: string, title: string) {
     background: (bg, w, h) => paintWorld(bg, m, { x: Math.max(0, Math.min(m.w - w, focus.x - w / 2)), y: Math.max(0, Math.min(m.h - h, focus.y - h * 0.7)) }, w, h, [], c!.period),
   }, $('battle'));
   battleScene = scene;
+  audio.track('luta');
   $('s-game').classList.add('inbattle');
   const result = await scene.run();
   battleScene = null;
+  audio.track('vila');
   $('s-game').classList.remove('inbattle');
   busy = false;
   const me = result.fighters[0], won = result.over?.winner === 0;
@@ -985,6 +985,63 @@ function paint() {
     for (let i = 0; i < 3; i++) px(g, x - 2 + i * 2, y + 3 + bob, 1, 1, '#8b5036');
   }
   g.setTransform(1, 0, 0, 1, 0, 0);
+  drawQuestArrow();
+}
+
+// ——— Seta de objetivo ———
+const EXIT_TO: Partial<Record<MapId, { x: number; y: number }>> = { campo: { x: 622, y: 240 }, sala: { x: 240, y: 262 } };
+
+/** Onde o objetivo atual está, no mapa atual (ou a saída que leva até ele). */
+function questTarget(): { x: number; y: number; lift: number } | null {
+  if (!c || c.flags['academia-concluida']) return null;
+  let goal: { map: MapId; x: number; y: number; lift: number } | null = null;
+  const lessonPending = c.period === 0 && c.rank !== 'Genin' && !c.lessonsDone.includes(c.day)
+    && (!!todayLesson(c) || c.day >= EXAM_DAY) && !(c.flags['exame:player'] === 'reprovado' && c.day < Number(c.flags.repescagem));
+  if (c.quest === 'matricula-ficha') goal = { map: 'rua', x: 308, y: 212, lift: 34 };
+  else if (c.quest === 'matricula-entrega') {
+    const ir = npcs.find((n) => n.id === 'iruka');
+    goal = { map: 'rua', x: ir?.x ?? 458, y: ir?.y ?? 222, lift: 56 };
+  } else if (lessonPending) goal = { map: 'rua', x: 450, y: 190, lift: 22 };
+  else if (c.period === 2) goal = { map: 'rua', x: 117, y: 434, lift: 30 };
+  else if (c.period === 1 && c.map === 'rua') goal = { map: 'campo', x: 0, y: 0, lift: 0 };
+  if (!goal) return null;
+  if (goal.map !== c.map) {
+    if (c.map === 'rua' && goal.map === 'campo') return { x: 22, y: 248, lift: 18 };
+    const ex = EXIT_TO[c.map];
+    return ex ? { x: ex.x, y: ex.y, lift: 18 } : null;
+  }
+  if (Math.hypot(c.x - goal.x, c.y - goal.y) < 30) return null;
+  return goal;
+}
+
+function arrowShape(x: number, y: number, angle: number) {
+  g.save();
+  g.translate(Math.round(x), Math.round(y));
+  g.rotate(angle);
+  g.beginPath();
+  g.moveTo(7, 0); g.lineTo(-1, -7); g.lineTo(-1, -3); g.lineTo(-7, -3); g.lineTo(-7, 3); g.lineTo(-1, 3); g.lineTo(-1, 7);
+  g.closePath();
+  g.lineJoin = 'miter'; g.lineWidth = 3; g.strokeStyle = '#2b1a10'; g.stroke();
+  g.fillStyle = '#f0c27a'; g.fill();
+  g.fillStyle = '#fff1d2'; g.fillRect(-6, -2, 6, 1);
+  g.restore();
+}
+
+function drawQuestArrow() {
+  const t = busy ? null : questTarget();
+  if (!t) return;
+  const bob = calm.matches ? 0 : Math.round(Math.sin(clock * 5) * 2);
+  const sx = t.x - Math.round(camera.x), sy = t.y - t.lift - Math.round(camera.y);
+  const m = 16, w = cv.width, h = cv.height;
+  if (sx > m && sx < w - m && sy > m + 20 && sy < h - m) { arrowShape(sx, sy - 6 + bob, Math.PI / 2); return; }
+  // Fora da tela: seta na borda apontando para o alvo (8 direções, para manter o pixel nítido).
+  const cx = w / 2, cy = h / 2;
+  const raw = Math.atan2(sy - cy, sx - cx);
+  const ang = Math.round(raw / (Math.PI / 4)) * (Math.PI / 4);
+  const ex = Math.max(m, Math.min(w - m, cx + Math.cos(raw) * w));
+  const ey = Math.max(m + 44, Math.min(h - m, cy + Math.sin(raw) * h));
+  const pulse = calm.matches ? 0 : Math.round(Math.sin(clock * 6) * 2);
+  arrowShape(ex - Math.cos(ang) * pulse, ey - Math.sin(ang) * pulse, ang);
 }
 
 // ——— Capa animada (mesmo canvas, atrás das telas de menu) ———
@@ -1070,8 +1127,10 @@ function renderMenu() {
     const b1 = el('button', '', 'Salvar agora') as HTMLButtonElement; b1.onclick = () => save(true);
     const b2 = el('button', '', zoomCloser ? 'Afastar câmera' : 'Aproximar câmera') as HTMLButtonElement; b2.onclick = () => { zoomCloser = !zoomCloser; size(); camera = limits(); renderMenu(); };
     const b3 = el('button', '', 'Voltar às campanhas') as HTMLButtonElement; b3.onclick = () => { save(); $<HTMLDialogElement>('menu').close(); openSlots(); };
-    wrap.append(b1, b2, b3);
-    body.append(wrap, el('p', 'muted', `Versão 0.3.0 · Dificuldade ${LABELS[c.settings.difficulty]} · ${LABELS[c.settings.fidelity]} · Tempo de jogo ${Math.round(c.playtime / 60)} min.`));
+    const b4 = el('button', '', `Música: ${audio.music ? 'ligada' : 'desligada'}`) as HTMLButtonElement; b4.onclick = () => { audio.setMusic(!audio.music); renderMenu(); };
+    const b5 = el('button', '', `Efeitos: ${audio.sfxOn ? 'ligados' : 'desligados'}`) as HTMLButtonElement; b5.onclick = () => { audio.setSfx(!audio.sfxOn); renderMenu(); };
+    wrap.append(b1, b4, b5, b2, b3);
+    body.append(wrap, el('p', 'muted', `Versão 0.3.1 · Dificuldade ${LABELS[c.settings.difficulty]} · ${LABELS[c.settings.fidelity]} · Tempo de jogo ${Math.round(c.playtime / 60)} min.`));
   }
 }
 $('btnMenu').onclick = openMenu;
@@ -1090,18 +1149,18 @@ function markChoice(i: number) {
 function menuKeys(e: KeyboardEvent, box: HTMLElement) {
   const k = e.key.toLowerCase();
   const list = menuButtons(box);
-  if (DIRS[k] === 'up' || DIRS[k] === 'left') { e.preventDefault(); setCurrent(box, menuIndex - 1); list[menuIndex]?.focus(); }
-  else if (DIRS[k] === 'down' || DIRS[k] === 'right') { e.preventDefault(); setCurrent(box, menuIndex + 1); list[menuIndex]?.focus(); }
+  if (DIRS[k] === 'up' || DIRS[k] === 'left') { e.preventDefault(); setCurrent(box, menuIndex - 1); list[menuIndex]?.focus(); audio.sfx('hover'); }
+  else if (DIRS[k] === 'down' || DIRS[k] === 'right') { e.preventDefault(); setCurrent(box, menuIndex + 1); list[menuIndex]?.focus(); audio.sfx('hover'); }
   else if ((k === 'enter' || k === 'e' || k === ' ') && !e.repeat) { e.preventDefault(); list[menuIndex]?.click(); }
 }
 function createKeys(e: KeyboardEvent) {
   const k = e.key;
   if (document.activeElement === $('f_name') && !['ArrowUp', 'ArrowDown', 'Enter', 'Escape'].includes(k)) return;
   const opts = CREATE_TABS[createTab].opts;
-  if (k === 'ArrowUp') { e.preventDefault(); $('f_name').blur(); createRow = (createRow + opts.length - 1) % opts.length; markRow(); }
-  else if (k === 'ArrowDown') { e.preventDefault(); $('f_name').blur(); createRow = (createRow + 1) % opts.length; markRow(); }
-  else if (k === 'ArrowLeft' || k === 'a') { e.preventDefault(); cycleOpt(-1); }
-  else if (k === 'ArrowRight' || k === 'd') { e.preventDefault(); cycleOpt(1); }
+  if (k === 'ArrowUp') { e.preventDefault(); $('f_name').blur(); createRow = (createRow + opts.length - 1) % opts.length; markRow(); audio.sfx('hover'); }
+  else if (k === 'ArrowDown') { e.preventDefault(); $('f_name').blur(); createRow = (createRow + 1) % opts.length; markRow(); audio.sfx('hover'); }
+  else if (k === 'ArrowLeft' || k === 'a') { e.preventDefault(); cycleOpt(-1); audio.sfx('tick'); }
+  else if (k === 'ArrowRight' || k === 'd') { e.preventDefault(); cycleOpt(1); audio.sfx('tick'); }
   else if (k === 'q' || k === 'PageUp') { e.preventDefault(); createTab = (createTab + CREATE_TABS.length - 1) % CREATE_TABS.length; createRow = 0; renderCreate(); }
   else if (k === 'e' || k === 'PageDown') { e.preventDefault(); createTab = (createTab + 1) % CREATE_TABS.length; createRow = 0; renderCreate(); }
   else if (k === 'Escape') { e.preventDefault(); openSlots(); }
@@ -1130,10 +1189,10 @@ window.addEventListener('keydown', (e) => {
   if (dialogResolve) {
     const atChoices = dialogChoices.length > 0 && dialogIndex >= dialogLines.length - 1;
     if (atChoices) {
-      if (/^[1-9]$/.test(k) && dialogChoices[Number(k) - 1]) { e.preventDefault(); closeDialog(dialogChoices[Number(k) - 1].id); }
-      else if (DIRS[k] === 'up') { e.preventDefault(); markChoice(choiceIndex - 1); }
-      else if (DIRS[k] === 'down') { e.preventDefault(); markChoice(choiceIndex + 1); }
-      else if ((k === 'e' || k === 'enter' || k === ' ') && !e.repeat) { e.preventDefault(); closeDialog(dialogChoices[choiceIndex].id); }
+      if (/^[1-9]$/.test(k) && dialogChoices[Number(k) - 1]) { e.preventDefault(); audio.sfx('confirm'); closeDialog(dialogChoices[Number(k) - 1].id); }
+      else if (DIRS[k] === 'up') { e.preventDefault(); markChoice(choiceIndex - 1); audio.sfx('hover'); }
+      else if (DIRS[k] === 'down') { e.preventDefault(); markChoice(choiceIndex + 1); audio.sfx('hover'); }
+      else if ((k === 'e' || k === 'enter' || k === ' ') && !e.repeat) { e.preventDefault(); audio.sfx('confirm'); closeDialog(dialogChoices[choiceIndex].id); }
     } else if ((k === 'e' || k === 'enter' || k === ' ') && !e.repeat) { e.preventDefault(); advanceDialog(); }
     return;
   }
@@ -1199,3 +1258,21 @@ if (import.meta.env.DEV) {
     },
   });
 }
+
+// ——— Som ———
+const unlockAudio = () => audio.unlock();
+window.addEventListener('pointerdown', unlockAudio);
+window.addEventListener('keydown', unlockAudio);
+document.addEventListener('visibilitychange', () => audio.visible(!document.hidden));
+let hovered: Element | null = null;
+document.addEventListener('pointerover', (e) => {
+  if (e.pointerType !== 'mouse') return;
+  const b = (e.target as Element).closest('button');
+  if (b && b !== hovered && !(b as HTMLButtonElement).disabled) { hovered = b; audio.sfx('hover'); }
+  else if (!b) hovered = null;
+});
+document.addEventListener('click', (e) => {
+  const b = (e.target as Element).closest('button') as HTMLButtonElement | null;
+  if (!b || b.disabled || b.dataset.d) return;
+  audio.sfx(b.dataset.back || b.id === 'closeMenu' ? 'back' : 'confirm');
+}, true);

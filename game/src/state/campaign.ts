@@ -1,7 +1,7 @@
 // Estado completo de uma campanha. Tudo aqui é serializável e versionado (schema).
 import { baseStats, maxVitals, type StatBlock, type Stat, type Rank } from '../data/stats';
 import { CHARACTERS, type MapId, type Period } from '../data/characters';
-import { clanByName, CLANS } from '../data/clans';
+import { clanByName, CLANS, VILLAGES, PASTS, TALENTS, ATTRIBUTE_PICKS } from '../data/clans';
 import { ELEMENTS } from '../data/stats';
 import type { EraId } from '../data/academy';
 import { Rng } from '../core/rng';
@@ -9,13 +9,17 @@ import { Rng } from '../core/rng';
 export const SCHEMA = 3;
 /** Porta de casa, na casa vermelha do sul da Rua da Academia. */
 export const HOME_SPOT = { x: 117, y: 437 };
-export const GAME_VERSION = '0.3.0';
+export const GAME_VERSION = '0.3.1';
 
 export interface Profile {
   name: string; sex: string; village: string; clan: string; element: string;
   talent: string; attribute: string; past: string;
   skin: string; hair: string; cut: string; coat: string;
+  trim: string; accessory: string; mark: string; band: string;
 }
+
+/** Valores de aparência adicionados na v0.3.1; saves anteriores recebem estes padrões. */
+export const LOOK_DEFAULTS = { trim: 'Laranja', accessory: 'Nenhum', mark: 'Nenhuma', band: 'Azul' };
 
 export interface Settings {
   difficulty: 'facil' | 'normal' | 'dificil';
@@ -98,11 +102,25 @@ export function npcInitial(): Record<string, NpcState> {
   return out;
 }
 
+/** Sorteia tudo que não é aparência. Clãs comuns saem mais; linhagens raras são verdadeiras surpresas. */
+export function rollOrigin(p: Profile, rng: Rng) {
+  if (p.clan === 'Sortear') {
+    const weight = (id: string, rare?: boolean) => (id === 'sem-cla' ? 6 : rare ? 1 : 3);
+    const total = CLANS.reduce((s, k) => s + weight(k.id, k.rareInKonoha), 0);
+    let r = rng.next() * total;
+    p.clan = (CLANS.find((k) => (r -= weight(k.id, k.rareInKonoha)) < 0) ?? CLANS[0]).name;
+  }
+  if (p.village === 'Sortear') p.village = rng.chance(0.72) ? 'Konoha' : rng.pick(VILLAGES.filter((v) => v !== 'Konoha'));
+  if (p.element === 'Sortear') p.element = rng.pick(ELEMENTS);
+  if (p.talent === 'Sortear') p.talent = rng.pick(TALENTS);
+  if (p.attribute === 'Sortear') p.attribute = rng.pick(ATTRIBUTE_PICKS);
+  if (p.past === 'Sortear') p.past = rng.pick(PASTS);
+}
+
 export function newCampaign(input: Profile, settings: Settings, seed: number): Campaign {
   const rng = new Rng(seed);
   const p = { ...input };
-  if (p.clan === 'Sortear') p.clan = rng.pick(CLANS).name;
-  if (p.element === 'Sortear') p.element = rng.pick(ELEMENTS);
+  rollOrigin(p, rng);
   const stats = baseStats(2);
   const add = (k: string, v: number) => { if (k in stats) stats[k as Stat] += v; };
   add(p.attribute, 2);
