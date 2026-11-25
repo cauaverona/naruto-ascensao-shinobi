@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { newCampaign, type Campaign, type Profile } from '../src/state/campaign';
-import { decode, readSlot, writeSlot, memoryStore, slotKey } from '../src/state/save';
+import { deleteSlot, decode, readSlot, writeSlot, memoryStore, slotKey, LAST_SLOT_KEY } from '../src/state/save';
 import { dueEvents, resolveEvent, sleep, startAfternoon, spendAction, WORLD_EVENTS } from '../src/systems/world';
 import { train, statCost, applyTraining, learn } from '../src/systems/progression';
 import { EXAM_DAY } from '../src/data/academy';
@@ -64,6 +64,36 @@ describe('salvamento', () => {
     expect(readSlot(s, 1).kind).toBe('broken');
     s.setItem(slotKey(2), JSON.stringify({ schema: 99 }));
     expect(readSlot(s, 2).kind).toBe('broken');
+  });
+  it('exclui só a jornada escolhida e limpa o atalho Continuar quando necessário', () => {
+    const s = memoryStore(), c = fresh();
+    writeSlot(s, 0, c, null);
+    s.setItem(slotKey(1), '');
+    s.setItem(LAST_SLOT_KEY, '0');
+    expect(deleteSlot(s, 1, '')).toEqual({ ok: true });
+    expect(s.getItem(LAST_SLOT_KEY)).toBe('0');
+    const raw = s.getItem(slotKey(0))!;
+    writeSlot(s, 2, c, null);
+    expect(deleteSlot(s, 0, raw)).toEqual({ ok: true });
+    expect(readSlot(s, 0).kind).toBe('empty');
+    expect(readSlot(s, 2).kind).toBe('ok');
+    expect(s.getItem(LAST_SLOT_KEY)).toBeNull();
+  });
+  it('preserva um save alterado depois de abrir a confirmação', () => {
+    const s = memoryStore(), c = fresh();
+    const saved = writeSlot(s, 0, c, null);
+    if (!saved.ok) throw new Error('Falha ao preparar o save de teste');
+    writeSlot(s, 0, { ...c, day: 4 }, saved.raw);
+    expect(deleteSlot(s, 0, saved.raw)).toEqual({ ok: false, reason: 'conflict' });
+    expect(decode(s.getItem(slotKey(0))!).day).toBe(4);
+  });
+  it('dá o visual padrão a saves antigos e mantém a personalização escolhida', () => {
+    const old = { ...fresh(), profile: { ...profile } };
+    expect(decode(JSON.stringify(old)).profile).toMatchObject({
+      outfit: 'Uniforme da Academia', scarf: 'Cachecol solto', accessoryTone: 'Grafite',
+    });
+    const custom = { ...old, profile: { ...profile, outfit: 'Colete de campo', scarf: 'Sem cachecol', accessoryTone: 'Jade' } };
+    expect(decode(JSON.stringify(custom)).profile).toMatchObject(custom.profile);
   });
 });
 
