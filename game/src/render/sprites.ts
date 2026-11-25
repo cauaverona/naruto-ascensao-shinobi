@@ -2,6 +2,7 @@
 // Linhas: 0 frente, 1 lado (direita; esquerda é espelhada), 2 costas. Quatro quadros de caminhada.
 // O protagonista e os personagens originais com `look` são recoloridos a partir da folha base.
 import type { Look, SpriteRole } from '../data/characters';
+import { accessorySet, OUTFITS, SCARVES } from '../data/appearance';
 import { offscreen, loadImage } from './gfx';
 
 const files = import.meta.glob('../assets/*-{walk,face,idle}.png', { eager: true, import: 'default' }) as Record<string, string>;
@@ -39,8 +40,8 @@ export const trimSet: Record<string, string[]> = {
 };
 /** Cor do pano da bandana de Konoha. */
 export const bandSet: Record<string, string> = { Azul: '#2b3550', Preto: '#181a20', Vermelho: '#8e2a2f', Verde: '#2f5a3a', Roxo: '#4a3570', Branco: '#d8dce0', Laranja: '#c4682a' };
-export const CUTS = ['Curto', 'Franja', 'Preso', 'Rabo alto', 'Chiquinhas', 'Coque', 'Trança', 'Espetado', 'Longo', 'Cacheado'];
-export const ACCESSORIES = ['Nenhum', 'Óculos', 'Máscara', 'Faixa na testa', 'Curativo'];
+export const CUTS = ['Curto', 'Franja', 'Preso', 'Rabo alto', 'Chiquinhas', 'Coque', 'Trança', 'Espetado', 'Longo', 'Cacheado', 'Raspado nas laterais', 'Meio preso', 'Ondulado'];
+export const ACCESSORIES = ['Nenhum', 'Óculos', 'Máscara', 'Faixa na testa', 'Curativo', 'Óculos redondos', 'Brinco', 'Presilha'];
 export const MARKS = ['Nenhuma', 'Cicatriz', 'Bigodes', 'Marcas vermelhas'];
 
 export interface Actor { role: SpriteRole; look?: Look; bandana?: boolean }
@@ -61,34 +62,172 @@ function shade(r: number, g: number, b: number, set: string[], range: [number, n
 type Tri = string[];
 type Ctx = CanvasRenderingContext2D;
 const R = (c: Ctx, color: string, x: number, y: number, w: number, h: number) => { c.fillStyle = color; c.fillRect(x, y, w, h); };
+const SCARF_INK = new Set([0x674026, 0x7c4111, 0x905523, 0xa46633, 0xb86a29, 0xcb7026, 0xd88133, 0xe29755]);
+const SCARF_EDGE = new Set([0x3f2415, 0x4e2912, 0x52301b, 0x593720]);
+const indexAt = (x: number, y: number) => y * CELL_W + x;
 
-function customize(canvas: HTMLCanvasElement, p: Look, dir: Dir, frame: number, bandana = false) {
+function wardrobeMasks(d: Uint8ClampedArray, top: number) {
+  const size = CELL_W * CELL_H;
+  const solid = new Uint8Array(size), skin = new Uint8Array(size), cloth = new Uint8Array(size);
+  for (let y = top; y < SOLE; y++) for (let x = 0; x < CELL_W; x++) {
+    const i = indexAt(x, y), k = i * 4, r = d[k], g = d[k + 1], b = d[k + 2];
+    if (!d[k + 3]) continue;
+    solid[i] = 1;
+    const ink = (r << 16) | (g << 8) | b;
+    if (y >= top + 11 && y <= top + 18 && SCARF_INK.has(ink)) cloth[i] = 1;
+    if (y >= top + 7 && y <= top + 11 && !SCARF_INK.has(ink) && !SCARF_EDGE.has(ink)
+      && r > g * 1.09 && g > b * 1.05) skin[i] = 1;
+  }
+  for (let y = top + 11; y <= top + 18; y++) for (let x = 1; x < CELL_W - 1; x++) {
+    const i = indexAt(x, y), k = i * 4;
+    if (solid[i] && SCARF_EDGE.has((d[k] << 16) | (d[k + 1] << 8) | d[k + 2])
+      && [i - 1, i + 1, i - CELL_W, i + CELL_W].some((j) => cloth[j] === 1)) cloth[i] = 2;
+  }
+  return { solid, skin, cloth };
+}
+
+function paintFaceMarks(d: Uint8ClampedArray, skin: Uint8Array, mark: string | undefined, dir: Dir, top: number, cx: number) {
+  if (dir === 'up' || !mark || mark === 'Nenhuma') return;
+  const side = dir === 'right', y = top + 10;
+  let rightCheek = cx + 4;
+  if (side) {
+    for (let x = CELL_W - 2; x > cx; x--) {
+      if (skin[indexAt(x, y)] && skin[indexAt(x - 1, y)]) { rightCheek = x - 1; break; }
+    }
+  }
+  const blend = (x: number, row: number, ink: ReadonlyArray<number>, opacity: number) => {
+    const i = indexAt(x, row);
+    if (!skin[i]) return;
+    for (let c = 0; c < 3; c++) d[i * 4 + c] = Math.round(d[i * 4 + c] * (1 - opacity) + ink[c] * opacity);
+  };
+  const scar = [113, 48, 54], red = [171, 45, 52], whisker = [50, 37, 47];
+  if (mark === 'Cicatriz') {
+    const x = side ? rightCheek : cx + 3;
+    blend(x, y - 1, scar, 0.66);
+    blend(x - 1, y, scar, 0.85);
+    blend(x - 2, y + 1, scar, 0.62);
+  } else if (mark === 'Bigodes') {
+    for (const [x, towardsNose] of side ? [[rightCheek, -1]] : [[cx - 4, 1], [cx + 4, -1]]) {
+      blend(x, y, whisker, 0.86);
+      blend(x + towardsNose, y, whisker, 0.68);
+      blend(x + towardsNose, y + 1, whisker, 0.76);
+    }
+  } else if (mark === 'Marcas vermelhas') {
+    for (const [x, towardsNose] of side ? [[rightCheek, -1]] : [[cx - 4, 1], [cx + 4, -1]]) {
+      blend(x, y - 1, red, 0.75);
+      blend(x, y, red, 0.87);
+      blend(x + towardsNose, y, red, 0.60);
+      blend(x + towardsNose, y + 1, red, 0.77);
+    }
+  }
+}
+
+/** Choose shaded pixels inside the original torso, so clothes follow every pose. */
+function outfitShade(outfit: string, dir: Dir, x: number, y: number, center: number) {
+  const offset = x - center, distance = Math.abs(offset), front = dir === 'down', side = dir === 'right';
+  if (outfit === OUTFITS[1]) {
+    if (front && offset === 0 && y < 32) return y % 3 === 0 ? 2 : 0;
+    if (y === 29 && distance > 3) return 2;
+    return y < 25 ? 1 : null;
+  }
+  if (outfit === OUTFITS[2]) {
+    if (y >= 24 && y <= 30 && distance <= (side ? 3 : 5)) {
+      if (y === 27 || y === 30 || (front && offset === 0)) return 0;
+      return y === 24 || y === 28 ? 2 : 1;
+    }
+    return 0;
+  }
+  if (outfit === OUTFITS[3]) {
+    if (front && offset === Math.floor((y - 25) / 2) - 2) return 2;
+    if (side && offset === 2) return 2;
+    if (y === 30 || y === 31) return y === 30 ? 0 : 2;
+    return y < 28 ? 1 : null;
+  }
+  if (outfit === OUTFITS[4]) {
+    if (y <= (front ? 27 : 30)) return front && distance <= 2 ? 0 : y === 24 ? 2 : 1;
+    return y === (front ? 28 : 31) ? 2 : 0;
+  }
+  if (outfit === OUTFITS[5]) {
+    if (y === 28 && distance > 3) return 2;
+    if (y >= 30 && distance <= 5) return 0;
+    return y < 26 ? 2 : 1;
+  }
+  return null;
+}
+
+function customize(canvas: HTMLCanvasElement, p: Look, dir: Dir, frame: number, bandana: boolean, mirrored: boolean) {
   const g = canvas.getContext('2d', { willReadFrequently: true })!, im = g.getImageData(0, 0, CELL_W, CELL_H), d = im.data;
   let top = SOLE, left = 40, right = 0;
   for (let y = 0; y < SOLE; y++) for (let x = 0; x < CELL_W; x++) if (d[(y * CELL_W + x) * 4 + 3] > 0) top = Math.min(top, y);
-  const height = SOLE - top, headEnd = top + Math.round(height * 0.38);
+  if (top === SOLE) return top;
+  const height = SOLE - top, headEnd = top + (dir === 'up' ? 11 : 10), rise = top - 8;
   const trim = p.trim && p.trim !== 'Laranja' ? trimSet[p.trim] : null;
-  for (let y = top; y < SOLE; y++) for (let x = 0; x < CELL_W; x++) {
+  const fabric = trimSet[p.trim ?? 'Laranja'] ?? trimSet.Laranja;
+  const suit = clothes[p.coat] ?? clothes['Índigo'];
+  const scarf = p.scarf ?? SCARVES[1];
+  for (let y = top; y <= top + 6; y++) for (let x = 0; x < CELL_W; x++) {
     const k = (y * CELL_W + x) * 4;
+    if (d[k + 3] && d[k + 2] > d[k] * 0.97 && d[k + 2] >= d[k + 1] * 0.98) {
+      left = Math.min(left, x); right = Math.max(right, x);
+    }
+  }
+  if (right <= left) return top;
+  const center = Math.round((left + right) / 2);
+  const { solid, skin, cloth } = wardrobeMasks(d, top);
+  for (let y = top; y < SOLE; y++) for (let x = 0; x < CELL_W; x++) {
+    const i = indexAt(x, y), k = i * 4;
     if (!d[k + 3]) continue;
     const r = d[k], gg = d[k + 1], b = d[k + 2];
     let color: number[] | null = null;
-    const blue = b > r * 0.97 && b >= gg * 0.98, face = y <= headEnd, rim = y < top + height * 0.22;
+    const blue = b > r * 0.97 && b >= gg * 0.98, face = y <= headEnd;
     // Laranja bem saturado = cachecol e faixas do traje (a pele é bem menos saturada).
     const orange = r > 90 && (r - b) / r > 0.6 && gg > b * 1.25 && gg < r * 0.82;
-    if (blue && y < top + height * 0.31) { left = Math.min(left, x); right = Math.max(right, x); }
-    if (trim && orange && y >= top + 8) color = shade(r, gg, b, trim, [55, 170]);
-    else if (blue && (rim || (face && y < headEnd - 1)) && p.hair !== 'Preto') color = shade(r, gg, b, hairSet[p.hair] ?? hairSet.Preto, [14, 106]);
+    const scarfPixel = cloth[i];
+    const contour = !solid[i - 1] || !solid[i + 1] || !solid[i - CELL_W] || !solid[i + CELL_W];
+    const sideShave = p.cut === 'Raspado nas laterais' && blue && y >= top + 6 && y <= top + 8
+      && (dir === 'right' ? x >= left + 3 && x <= center + 1 : x <= left + 4 || x >= right - 4);
+    if (scarfPixel && scarf !== SCARVES[1]) {
+      const offset = x - center;
+      const side = dir === 'right', back = dir === 'up';
+      const tail = side ? offset < -2 || offset > 5 : offset < -5 || offset > 5;
+      if (tail) { d[k + 3] = 0; continue; }
+      const row = y - top, collar = back ? 11 : 12;
+      const outer = side ? offset === -2 || offset === 5 : Math.abs(offset) === 5;
+      if (scarf === SCARVES[3] && row >= collar && row <= collar + 3) {
+        color = rgb(fabric[contour || outer ? 0 : row === collar + 1 ? 2 : 1]);
+      } else if (scarf === SCARVES[2] && (row === collar || row === collar + 1
+        || (row === collar + 2 && offset >= 1 && offset <= 3))) {
+        color = rgb(fabric[contour || outer ? 0 : row === collar ? 2 : 1]);
+      } else {
+        color = rgb(suit[contour || row <= 13 ? 0 : 1]);
+      }
+    } else if (sideShave) {
+      const skin = skinSet[p.skin] ?? skinSet.Dourada;
+      color = rgb(skin[y === top + 6 ? 0 : 1]).map((v, i) => Math.round(v * 0.76 + [38, 43, 55][i] * 0.24));
+    } else if (trim && (scarfPixel || (orange && y >= top + 17))) color = shade(r, gg, b, trim, [55, 170]);
+    else if (blue && face && (dir === 'up' || y <= top + (dir === 'right' && x < center ? 10 : 7)) && p.hair !== 'Preto') color = shade(r, gg, b, hairSet[p.hair] ?? hairSet.Preto, [14, 106]);
     else if (dir !== 'up' && face && !orange && r > gg * 1.09 && gg > b * 1.05 && p.skin !== 'Dourada') color = shade(r, gg, b, skinSet[p.skin] ?? skinSet.Dourada, [68, 218]);
-    else if (!face && y < top + height * 0.72 && p.coat !== 'Índigo' && blue) color = shade(r, gg, b, clothes[p.coat] ?? clothes['Índigo'], [17, 140]);
+    else if (!face && y < top + height * 0.72 && blue) {
+      const torso = y - rise >= 23 && Math.abs(x - center) <= (dir === 'right' ? 5 : 7);
+      const style = torso && !contour && r + gg + b >= 92 ? outfitShade(p.outfit ?? OUTFITS[0], dir, x, y - rise, center) : null;
+      if (style !== null) color = rgb(suit[style]);
+      else if (p.coat !== 'Índigo' && !contour) color = shade(r, gg, b, suit, [17, 140]);
+    }
     else if (!face && !orange && p.skin !== 'Dourada' && r > gg * 1.13 && gg > b * 1.07 && r - b < 98 && y > top + height * 0.59) color = shade(r, gg, b, skinSet[p.skin] ?? skinSet.Dourada, [60, 211]);
     if (color) { d[k] = color[0]; d[k + 1] = color[1]; d[k + 2] = color[2]; }
   }
-  g.putImageData(im, 0, 0);
-  if (right > left) {
-    drawCut(g, p.cut, dir, top, left, right, frame, hairSet[p.hair] ?? hairSet.Preto);
-    drawFace(g, p, dir, top, left, right, frame, bandana);
+  // Removing fabric can uncover a single outline pixel that no longer touches the sprite.
+  if (scarf !== SCARVES[1]) for (let y = top + 11; y <= top + 19; y++) for (let x = 1; x < CELL_W - 1; x++) {
+    const i = indexAt(x, y);
+    if (!d[i * 4 + 3]) continue;
+    const attached = [-CELL_W, 0, CELL_W].some((row) =>
+      [-1, 0, 1].some((column) => (row !== 0 || column !== 0) && d[(i + row + column) * 4 + 3]));
+    if (!attached) d[i * 4 + 3] = 0;
   }
+  if (!mirrored || p.mark !== 'Cicatriz') paintFaceMarks(d, skin, p.mark, dir, top, center);
+  g.putImageData(im, 0, 0);
+  drawCut(g, p.cut, dir, top, left, right, frame, hairSet[p.hair] ?? hairSet.Preto);
+  drawFace(g, p, dir, top, left, right, frame, bandana);
   if (p.clan === 'Uchiha' && dir === 'up') {
     const y = top + Math.round(height * 0.48);
     g.fillStyle = '#b44b3e'; g.fillRect(18, y, 4, 2); g.fillStyle = '#e6d5b1'; g.fillRect(19, y + 2, 2, 1); g.fillRect(20, y + 3, 1, 2);
@@ -98,14 +237,20 @@ function customize(canvas: HTMLCanvasElement, p: Look, dir: Dir, frame: number, 
 
 /** Penteados desenhados por cima da folha base. O que fica atrás da cabeça vai numa camada de fundo. */
 function drawCut(g: Ctx, cut: string, dir: Dir, top: number, left: number, right: number, frame: number, [dark, mid, light]: Tri) {
-  const cx = Math.round((left + right) / 2), sway = frame === 0 ? 1 : 0;
+  const cx = Math.round((left + right) / 2), sway = frame === 0 || frame === 3 ? 1 : 0;
   const side = dir === 'right', back = dir === 'up';
   const layer = offscreen(CELL_W, CELL_H), b = layer.getContext('2d')!;
   const tie = '#b44b3e';
   switch (cut) {
     case 'Franja': {
-      const bx = side ? right - 3 : left + 4, by = top + 4;
-      if (!back) { R(g, mid, bx, by, 4, 3); R(g, mid, bx + 1, by + 3, 2, 2); R(g, dark, bx + 1, by + 5, 1, 1); R(g, light, bx - 1, by, 3, 1); }
+      if (!back) {
+        const bx = side ? right - 7 : cx - 5, by = top + 4;
+        R(g, dark, bx, by + 1, 8, 3);
+        R(g, mid, bx + 1, by, 7, 3);
+        R(g, mid, bx + 4, by + 3, 3, 1);
+        R(g, dark, bx + 6, by + 4, 1, 1);
+        R(g, light, bx + 1, by + 1, 4, 1);
+      }
       break;
     }
     case 'Preso': {
@@ -163,49 +308,118 @@ function drawCut(g: Ctx, cut: string, dir: Dir, top: number, left: number, right
       break;
     }
     case 'Cacheado': {
-      // Cachos: volume nas laterais e pequenas ondas no contorno, sem passar muito do topo.
-      for (let x = left + 3; x <= right - 3; x += 5) { R(g, mid, x - 1, top - 1, 3, 2); R(g, light, x, top - 1, 1, 1); }
+      for (let x = left + 3; x <= right - 3; x += 5) {
+        const y = top - ((x - left) % 2 ? 1 : 0);
+        R(g, dark, x - 1, y, 4, 3); R(g, mid, x, y - 1, 3, 2);
+        R(g, light, x, y, 2, 1); R(g, mid, x + 1, y + 3, 2, 1);
+      }
       for (const x of side ? [left - 2] : [left - 2, right]) { R(b, dark, x, top + 3, 3, 9); R(b, mid, x + 1, top + 4, 1, 2); R(b, mid, x + 1, top + 8, 1, 2); R(b, dark, x + (x < cx ? 1 : 0), top + 12, 2, 2); }
+      break;
+    }
+    case 'Raspado nas laterais': {
+      R(g, dark, cx - 3, top - 2, 7, 3);
+      R(g, mid, cx - 2, top - 2, 5, 2);
+      R(g, light, cx - 1, top - 2, 2, 1);
+      break;
+    }
+    case 'Meio preso': {
+      const x = side ? left - 2 : cx - 2 + sway;
+      const c = back ? g : b;
+      R(c, dark, x, top + 6, 5, 9);
+      R(c, mid, x + 1, top + 8, 3, 6);
+      R(c, light, x + 1, top + 9, 1, 4);
+      R(c, dark, x + 2, top + 15, 2, 3);
+      R(c, tie, x + 1, top + 6, 3, 2);
+      if (!back) {
+        R(g, mid, cx - 2, top + 3, 5, 2);
+        R(g, light, cx, top + 3, 2, 1);
+      }
+      break;
+    }
+    case 'Ondulado': {
+      for (const x of side ? [left - 2] : [left - 2, right - 1]) {
+        const wave = x < cx ? -1 : 1, bend = x + wave;
+        R(b, dark, bend, top + 5, 4, 5);
+        R(b, mid, bend + 1, top + 5, 2, 4);
+        R(b, dark, x, top + 8, 4, 4);
+        R(b, mid, x + 1, top + 8, 2, 3);
+        R(b, dark, bend + sway, top + 11, 3, 4);
+        R(b, mid, bend + 1 + sway, top + 11, 1, 3);
+        R(b, light, bend + 1, top + 6, 1, 2);
+      }
+      R(g, mid, cx - 5, top + 2, 7, 2);
+      R(g, light, cx - 4, top + 2, 4, 1);
+      R(g, mid, cx + 2, top + 4, 3, 2);
       break;
     }
   }
   g.save(); g.globalCompositeOperation = 'destination-over'; g.drawImage(layer, 0, 0); g.restore();
 }
 
-/** Acessórios e marcas do rosto. De costas, só aparece o que fica atrás da cabeça. */
+/** Acessórios do rosto. De costas, só aparece o que fica atrás da cabeça. */
 function drawFace(g: Ctx, p: Look, dir: Dir, top: number, left: number, right: number, frame: number, bandana: boolean) {
   const cx = Math.round((left + right) / 2), side = dir === 'right', back = dir === 'up', sway = frame === 0 ? 1 : 0;
-  const ey = top + 9; // linha dos olhos
+  const ey = top + (side ? 8 : 9);
+  const [outline, material, shine] = accessorySet[p.accessoryTone ?? 'Grafite'] ?? accessorySet.Grafite;
   if (!back) {
-    if (p.mark === 'Cicatriz') {
-      const x = side ? right - 5 : cx - 2;
-      R(g, '#8a3434', x, ey + 2, 6, 1); R(g, '#f3c9b2', x, ey + 3, 6, 1); R(g, '#8a3434', x + 1, ey + 1, 1, 3); R(g, '#8a3434', x + 4, ey + 1, 1, 3);
-    }
-    if (p.mark === 'Bigodes') {
-      const xs = side ? [right - 4] : [cx - 7, cx + 4];
-      for (const x of xs) for (const dy of [2, 4]) R(g, '#4a2f27', x, ey + dy, 3, 1);
-    }
-    if (p.mark === 'Marcas vermelhas') { for (const x of side ? [right - 4] : [cx - 6, cx + 4]) { R(g, '#c2553f', x, ey + 2, 2, 3); R(g, '#e07a52', x, ey + 2, 1, 1); } }
-    if (p.accessory === 'Óculos') {
-      const lens = (x: number) => { R(g, '#26262e', x, ey - 1, 5, 3); R(g, '#a9d8ea', x + 1, ey, 3, 1); R(g, '#e8f6fb', x + 1, ey, 1, 1); };
-      if (side) { lens(right - 6); R(g, '#26262e', left + 3, ey, right - left - 9, 1); }
-      else { lens(cx - 6); lens(cx + 2); R(g, '#26262e', cx - 1, ey, 3, 1); }
+    if (p.accessory === 'Óculos' || p.accessory === 'Óculos redondos') {
+      const round = p.accessory === 'Óculos redondos';
+      const lens = (x: number) => {
+        R(g, outline, x, ey - 1, 5, 3);
+        R(g, material, x + 1, ey - 2, 3, 1);
+        if (round) R(g, outline, x + 1, ey + 2, 3, 1);
+        R(g, '#8ab7be', x + 1, ey, 3, 1);
+        R(g, shine, x + 1, ey, 1, 1);
+      };
+      if (side) {
+        const x = right - 5;
+        R(g, material, x - 4, ey, 4, 1);
+        lens(x);
+      } else {
+        R(g, material, cx - 3, ey, 6, 1);
+        lens(cx - 6); lens(cx + 1);
+      }
     }
     if (p.accessory === 'Máscara') {
-      if (side) { R(g, '#343a52', right - 6, ey + 2, 7, 5); R(g, '#4a5272', right - 6, ey + 2, 7, 1); R(g, '#343a52', left + 3, ey + 1, right - left - 9, 1); }
-      else { R(g, '#343a52', cx - 5, ey + 2, 11, 5); R(g, '#4a5272', cx - 5, ey + 2, 11, 1); R(g, '#262b3e', cx, ey + 3, 1, 4); }
+      const x = side ? right - 7 : cx - 5, w = side ? 7 : 11;
+      R(g, outline, x, ey + 1, w, 3);
+      R(g, material, x + 1, ey + 2, w - 2, 2);
+      R(g, outline, x + 2, ey + 4, w - 4, 1);
+      R(g, shine, x + (side ? 3 : 4), ey + 2, 2, 1);
+      if (side) R(g, outline, x - 3, ey + 1, 3, 1);
     }
     if (p.accessory === 'Curativo') {
-      if (side) { R(g, '#fff4dc', right - 3, ey + 1, 4, 2); R(g, '#b9a37c', right - 1, ey + 1, 1, 2); }
-      else { R(g, '#7f6a4c', cx - 3, ey, 7, 4); R(g, '#fff4dc', cx - 2, ey + 1, 5, 2); R(g, '#c9b790', cx, ey + 1, 1, 2); }
+      const x = side ? right - 5 : cx + 1;
+      R(g, '#a57c58', x, ey + 2, 5, 2);
+      R(g, '#f8deae', x + 1, ey + 2, 3, 1);
+      R(g, '#fff2cd', x + 2, ey + 3, 2, 1);
     }
+    if (p.accessory === 'Brinco') {
+      const x = side ? cx + 1 : left + 3;
+      R(g, outline, x, ey + 1, 2, 4);
+      R(g, shine, x, ey + 1, 1, 2);
+      R(g, material, x + 1, ey + 4, 1, 1);
+    }
+  }
+  if (p.accessory === 'Presilha') {
+    const x = side ? right - 7 : back ? right - 5 : left + 4;
+    R(g, outline, x, top + 5, 5, 3);
+    R(g, material, x + 1, top + 6, 3, 1);
+    R(g, shine, x + 1, top + 5, 2, 1);
   }
   // Faixa de pano na testa (some quando a bandana de genin está no lugar).
   if (p.accessory === 'Faixa na testa' && !bandana) {
     const color = bandSet[p.band ?? 'Vermelho'] ?? '#8e2a2f';
     // Mesma posição da bandana de genin, só que de pano.
-    if (back) { R(g, color, 14, top + 4, 12, 2); R(g, color, 18, top + 6, 2, 6); R(g, color, 21, top + 6, 2, 5 + sway); }
-    else { R(g, color, 13, top + 4, 14, 2); R(g, 'rgba(255,255,255,.25)', 13, top + 4, 14, 1); if (side) { R(g, color, 11, top + 5, 3, 2); R(g, color, 10 - sway, top + 7, 2, 4); } }
+    const x = cx - (side ? 5 : 6), width = side ? 12 : 13;
+    R(g, outline, x, top + 5, width, 3);
+    R(g, color, x, top + 5, width, 2);
+    R(g, 'rgba(255,255,255,.3)', x + 1, top + 5, width - 2, 1);
+    if (back || side) {
+      const knot = side ? x - 1 : cx;
+      R(g, color, knot, top + 7, 2, 5 + sway);
+      R(g, outline, knot + 2, top + 8, 1, 3);
+    }
   }
 }
 
@@ -221,11 +435,17 @@ function drawBandana(g: CanvasRenderingContext2D, top: number, dir: Dir, band?: 
 
 const HIP: Record<SpriteRole, number> = { gen: 34, iruka: 31, naruto: 32, player: 32, sasuke: 32, sakura: 32, emi: 32 };
 
+function appearanceKey(a: Actor) {
+  const l = a.look;
+  return [a.role, l?.skin, l?.hair, l?.coat, l?.cut, l?.trim, l?.accessory, l?.mark, l?.band,
+    l?.outfit, l?.scarf, l?.accessoryTone, l?.clan === 'Uchiha', a.bandana].join('|');
+}
+
 /** Quadro pronto: frame >= 0 caminhada; -1 repouso; -2 repouso com respiração. */
 export function stillFrame(a: Actor, dir: Dir, frame: number, gesture = false): HTMLCanvasElement {
   const custom = !!a.look;
   const L = a.look;
-  const key = [a.role, L?.skin, L?.hair, L?.coat, L?.cut, L?.trim, L?.accessory, L?.mark, L?.band, L?.clan === 'Uchiha', a.bandana, dir, frame, gesture].join('|');
+  const key = `${appearanceKey(a)}|${dir}|${frame}|${gesture}`;
   const hit = frameCache.get(key);
   if (hit) return hit;
   const canvas = offscreen(CELL_W, CELL_H), g = canvas.getContext('2d')!;
@@ -243,11 +463,11 @@ export function stillFrame(a: Actor, dir: Dir, frame: number, gesture = false): 
     b.drawImage(set.idle, 0, row * CELL_H + hip, CELL_W, CELL_H - hip, 0, hip, CELL_W, CELL_H - hip);
   }
   let top = 6;
-  if (custom && L) top = customize(base, L, canonical, frame, a.bandana);
+  if (custom && L) top = customize(base, L, canonical, frame, !!a.bandana, dir === 'left');
   if (a.bandana) drawBandana(b, top, canonical, L?.band);
   if (frame < 0 || gesture) {
     const split = 32, drop = gesture ? 0 : frame === -2 ? 2 : 1;
-    g.drawImage(base, 0, 0, CELL_W, split, 0, drop, CELL_W, split - drop);
+    g.drawImage(base, 0, 0, CELL_W, split - drop, 0, drop, CELL_W, split - drop);
     g.drawImage(base, 0, split, CELL_W, CELL_H - split, 0, split, CELL_W, CELL_H - split);
   } else g.drawImage(base, 0, 0);
   if (frameCache.size > 1600) frameCache.clear();
@@ -266,8 +486,7 @@ export function drawActor(g: CanvasRenderingContext2D, x: number, y: number, a: 
 const portraitCache = new Map<string, HTMLCanvasElement>();
 /** Retrato 40 × 40. Para o protagonista, usa o quadro frontal recolorido, ampliado no rosto. */
 export function portrait(a: Actor): HTMLCanvasElement {
-  const L = a.look;
-  const key = [a.role, L?.skin, L?.hair, L?.coat, L?.cut, L?.trim, L?.accessory, L?.mark, L?.band, L?.clan === 'Uchiha', a.bandana].join('|');
+  const key = appearanceKey(a);
   const hit = portraitCache.get(key);
   if (hit) return hit;
   const c = offscreen(40, 40), g = c.getContext('2d')!;
