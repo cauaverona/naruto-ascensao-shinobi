@@ -16,7 +16,7 @@ import { KunaiGame, StrikeGame, ChakraGame, SealsGame, grade, type Minigame } fr
 import { BattleScene } from './scenes/battle';
 import { makeFighter, startBattle } from './combat/engine';
 import { randomSeed, Rng } from './core/rng';
-import { drawActor, portrait, idlePose, spritesReady, clothes, skinSet, hairSet, trimSet, bandSet, CUTS, ACCESSORIES, MARKS, type Actor, type Dir } from './render/sprites';
+import { drawActor, portrait, idlePose, spritesReady, clothes, skinSet, hairSet, trimSet, bandSet, CUTS, FEMININE_CUT, ACCESSORIES, MARKS, type Actor, type Dir } from './render/sprites';
 import { px } from './render/gfx';
 import { audio } from './audio';
 import { blocked, type GameMap } from './render/maps/types';
@@ -206,6 +206,14 @@ const DEFAULTS: Record<Key, string> = {
   village: 'Sortear', clan: 'Sortear', element: 'Sortear', talent: 'Sortear', attribute: 'Sortear', past: 'Sortear',
 };
 let form: Record<Key, string> = { ...DEFAULTS };
+function availableChoices(option: Opt): readonly string[] {
+  return option.key === 'cut' && form.sex === 'Feminino' ? [...option.values, FEMININE_CUT] : option.values;
+}
+
+function setCreateChoice(key: Key, value: string) {
+  form[key] = value;
+  if (key === 'sex' && value !== 'Feminino' && form.cut === FEMININE_CUT) form.cut = DEFAULTS.cut;
+}
 let createTab = 0, createRow = 0, previewDir = 0;
 let previewWalking = false, previewDirty = true;
 const DESTINY_NOTE = 'Seu clã, aldeia, afinidade, talento e histórico são sorteados quando a jornada começa. Só a aparência é escolha sua.';
@@ -248,7 +256,7 @@ function renderCreate() {
     name.append(val);
     const group = document.createElement('div');
     group.className = o.colors ? 'swatches' : 'look-choices';
-    for (const value of o.values) {
+    for (const value of availableChoices(o)) {
       const b = document.createElement('button');
       const label = LABELS[value] ?? value;
       b.type = 'button';
@@ -263,7 +271,7 @@ function renderCreate() {
         b.className = 'look-choice';
         b.textContent = label;
       }
-      b.onclick = () => { createRow = i; form[o.key] = value; updateCreate(); };
+      b.onclick = () => { createRow = i; setCreateChoice(o.key, value); updateCreate(); };
       group.append(b);
     }
     r.addEventListener('focusin', () => { createRow = i; updateCreate(); });
@@ -289,8 +297,9 @@ function updateCreate() {
 }
 function cycleOpt(dirn: -1 | 1) {
   const o = CREATE_TABS[createTab].opts[createRow];
-  const i = o.values.indexOf(form[o.key]);
-  form[o.key] = o.values[(i + dirn + o.values.length) % o.values.length];
+  const values = availableChoices(o);
+  const i = values.indexOf(form[o.key]);
+  setCreateChoice(o.key, values[(i + dirn + values.length) % values.length]);
   updateCreate();
   $('rows').querySelectorAll('.opt')[createRow]?.querySelector<HTMLButtonElement>('[aria-pressed="true"]')?.focus();
 }
@@ -329,7 +338,10 @@ $('preview-motion').onclick = () => {
 };
 $('f_name').oninput = () => ($('origin').textContent = DESTINY_NOTE);
 $('randomize').onclick = () => {
-  for (const t of CREATE_TABS) for (const o of t.opts) if (t.id !== 'world' && o.key !== 'sex') form[o.key] = o.values[Math.floor(Math.random() * o.values.length)];
+  for (const t of CREATE_TABS) for (const o of t.opts) if (t.id !== 'world' && o.key !== 'sex') {
+    const values = availableChoices(o);
+    setCreateChoice(o.key, values[Math.floor(Math.random() * values.length)]);
+  }
   updateCreate();
 };
 $('form').onsubmit = (e) => {
