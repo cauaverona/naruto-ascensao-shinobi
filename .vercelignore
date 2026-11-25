@@ -1,5 +1,7 @@
 .git
 .env*
+interface
+PRODUCT.md
 Referencias
 *.docx
 *.md
