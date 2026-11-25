@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="theme-color" content="#0e1517">
+<title>Ascensão Shinobi</title>
+<link rel="icon" href="data:,">
+</head>
+<body>
+<main id="app">
+  <canvas id="stage" width="480" height="270" role="img" aria-label="Mundo do jogo"></canvas>
+
+  <!-- Tela de título -->
+  <section id="s-title" class="layer title">
+    <div class="logo">
+      <span class="seal" aria-hidden="true">忍</span>
+      <h1><span>Ascensão</span><span>Shinobi</span></h1>
+      <p class="tagline">Da Academia Ninja até virar lenda</p>
+    </div>
+    <nav class="mainmenu" id="mainmenu" aria-label="Menu principal"></nav>
+    <p class="foot">v0.3.0 · Era da Academia · Jogo de fã sem fins lucrativos</p>
+  </section>
+
+  <!-- Seleção de jornada -->
+  <section id="s-slots" class="layer dim" hidden>
+    <div class="panel wood wide">
+      <h2 class="ptitle">Escolha sua jornada</h2>
+      <div id="slots" class="slots"></div>
+      <div class="hint"><button class="ghost" data-back="title">Voltar</button><span>Saves da v0.2.0 são atualizados automaticamente.</span></div>
+    </div>
+  </section>
+
+  <!-- Criação de personagem -->
+  <section id="s-create" class="layer dim" hidden>
+    <form id="form" class="panel wood create" autocomplete="off">
+      <div class="pedestal">
+        <canvas id="preview" width="96" height="104" aria-label="Prévia do personagem"></canvas>
+        <div class="turn"><button type="button" class="ghost sm" id="rotL" aria-label="Girar para a esquerda"><i class="tri l"></i></button><button type="button" class="ghost sm" id="rotR" aria-label="Girar para a direita"><i class="tri r"></i></button></div>
+        <p id="origin" class="origin"></p>
+      </div>
+      <div class="sheet">
+        <h2 class="ptitle">Ficha de matrícula</h2>
+        <label class="namefield">Nome<input id="f_name" maxlength="16" placeholder="Digite seu nome" required></label>
+        <div class="tabs" role="tablist" id="ctabs"></div>
+        <div id="rows" class="rows"></div>
+        <div class="actions"><button type="button" class="ghost" data-back="slots">Voltar</button><button type="button" class="ghost" id="randomize">Sortear tudo</button><button class="primary" type="submit">Começar jornada</button></div>
+      </div>
+    </form>
+  </section>
+
+  <!-- HUD do jogo -->
+  <section id="s-game" class="layer hudlayer" hidden>
+    <div class="hud">
+      <canvas id="hudFace" width="40" height="40" aria-hidden="true"></canvas>
+      <div class="hudinfo"><strong id="who"></strong><span id="rank"></span>
+        <div class="bars" id="bars"></div></div>
+    </div>
+    <div class="clockbox"><span id="clock"></span><span id="objective"></span></div>
+    <div class="banner" id="banner" aria-live="polite"><span id="bannerRegion"></span><strong id="bannerName"></strong></div>
+    <div class="toast" id="toast" hidden></div>
+    <button class="menubtn" id="btnMenu" aria-label="Abrir menu"><i></i><i></i><i></i></button>
+    <div class="dialogue" id="talk" hidden><canvas id="head" width="40" height="40"></canvas><div class="dtext"><b id="speaker"></b><p id="words"></p><div id="choices" class="choices"></div></div><span class="more" id="next" role="button" aria-label="Avançar"></span></div>
+    <div class="touch" id="touch">
+      <div class="pad" aria-label="Direcional"><button data-d="up" aria-label="Cima"></button><button data-d="left" aria-label="Esquerda"></button><button data-d="down" aria-label="Baixo"></button><button data-d="right" aria-label="Direita"></button></div>
+      <button class="abtn" id="use" aria-label="Interagir">A</button>
+    </div>
+    <div class="battle" id="battle" hidden>
+      <div class="fpanel" data-side="0"><canvas width="40" height="40"></canvas><div><strong></strong><div class="bars"></div><span class="tags"></span></div></div>
+      <div class="fpanel right" data-side="1"><canvas width="40" height="40"></canvas><div><strong></strong><div class="bars"></div><span class="tags"></span></div></div>
+      <div class="dist"></div>
+      <div class="vs"><span class="vs-t"></span><strong class="vs-a"></strong><strong class="vs-b"></strong></div>
+      <div class="bpanel"><p class="blog"></p><div class="cmds"></div></div>
+    </div>
+    <div class="mini" id="mini" hidden><p class="mini-title"></p><p class="mini-help"></p><div class="mini-opts"></div></div>
+    <div class="fade" id="fade"></div>
+  </section>
+
+  <dialog id="menu" class="menu">
+    <div class="menuhead"><canvas id="menuFace" width="40" height="40"></canvas><div><h2 id="menuName"></h2><span id="menuSub"></span></div><button id="closeMenu" class="ghost">Voltar ao jogo</button></div>
+    <nav class="mtabs" id="tabs"></nav>
+    <div id="tabBody" class="tabbody"></div>
+  </dialog>
+</main>
+<script type="module" src="/src/main.ts"></script>
+</body>
+</html>

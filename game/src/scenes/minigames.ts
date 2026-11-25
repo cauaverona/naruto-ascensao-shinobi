@@ -1,0 +1,196 @@
+// Minijogos de treino. Cada um devolve uma nota de 0 a 1 que vira evolução de atributo e domínio.
+import { SEALS } from '../data/academy';
+import { px, ovalpx } from '../render/gfx';
+
+type G = CanvasRenderingContext2D;
+
+export interface Minigame {
+  title: string;
+  help: string;
+  done: boolean;
+  score: number;
+  /** Opções clicáveis (minijogo de selos). */
+  options?: { label: string; sub: string }[];
+  update(dt: number): void;
+  render(g: G, w: number, h: number): void;
+  press(down: boolean): void;
+  choose?(i: number): void;
+  status(): string;
+}
+
+const panel = (g: G, x: number, y: number, w: number, h: number) => {
+  px(g, x - 2, y - 2, w + 4, h + 4, '#2b1a10');
+  px(g, x, y, w, h, '#f3e5c2');
+  px(g, x, y, w, 2, '#a06b3f');
+};
+
+/** Alvo de arremesso: a mira oscila e você solta no momento certo. */
+export class KunaiGame implements Minigame {
+  title = 'Alvos de arremesso';
+  help = 'Aperte E, espaço ou toque quando a mira passar pelo centro. 5 kunai.';
+  done = false; score = 0;
+  private t = 0; private marks: { x: number; y: number }[] = []; private total = 0;
+  constructor(private steadiness: number) {}
+  private aim(w: number, h: number) {
+    const R = 34, cx = w / 2, cy = Math.round(h * 0.42);
+    const speed = (1.25 + this.marks.length * 0.18) / (1 + this.steadiness * 0.05);
+    return { x: cx + Math.sin(this.t * 2.3 * speed) * R * 1.15, y: cy + Math.sin(this.t * 3.1 * speed + 1.2) * R * 0.85, cx, cy, R };
+  }
+  private w = 480; private h = 270;
+  update(dt: number) { this.t += dt; }
+  render(g: G, w: number, h: number) {
+    this.w = w; this.h = h;
+    const { x, y, cx, cy, R } = this.aim(w, h);
+    g.fillStyle = 'rgba(14,21,23,.55)'; g.fillRect(0, 0, w, h);
+    px(g, cx - 2, cy + R - 2, 5, 40, '#6e5439');
+    ovalpx(g, cx, cy, R + 3, R + 3, '#3b2a1e'); ovalpx(g, cx, cy, R, R, '#efe2c0'); ovalpx(g, cx, cy, Math.round(R * 0.72), Math.round(R * 0.72), '#b5483a');
+    ovalpx(g, cx, cy, Math.round(R * 0.46), Math.round(R * 0.46), '#efe2c0'); ovalpx(g, cx, cy, Math.round(R * 0.2), Math.round(R * 0.2), '#b5483a');
+    for (const m of this.marks) { px(g, m.x - 1, m.y - 6, 2, 7, '#5b3a2a'); px(g, m.x - 1, m.y, 2, 2, '#c9d1d8'); }
+    if (!this.done) {
+      g.strokeStyle = '#1b2224'; g.lineWidth = 1;
+      px(g, x - 7, y, 5, 1, '#fff'); px(g, x + 3, y, 5, 1, '#fff'); px(g, x, y - 7, 1, 5, '#fff'); px(g, x, y + 3, 1, 5, '#fff');
+      px(g, x - 1, y - 1, 3, 3, '#f0c27a');
+    }
+  }
+  press(down: boolean) {
+    if (!down || this.done) return;
+    const { x, y, cx, cy, R } = this.aim(this.w, this.h);
+    this.marks.push({ x: Math.round(x), y: Math.round(y) });
+    this.total += Math.max(0, 1 - Math.hypot(x - cx, y - cy) / R);
+    if (this.marks.length >= 5) { this.done = true; this.score = this.total / 5; }
+  }
+  status() { return `Kunai ${Math.min(5, this.marks.length + 1)}/5`; }
+}
+
+/** Troncos: golpes no tempo certo, a zona boa encolhe a cada acerto. */
+export class StrikeGame implements Minigame {
+  title = 'Troncos de treino';
+  help = 'Aperte quando o marcador estiver na faixa dourada. 6 golpes.';
+  done = false; score = 0;
+  private pos = 0; private dir = 1; private hits = 0; private total = 0; private zone = 0.2; private shake = 0; private last = '';
+  constructor(private power: number) {}
+  update(dt: number) {
+    this.pos += this.dir * dt * (0.9 + this.hits * 0.12);
+    if (this.pos > 1) { this.pos = 1; this.dir = -1; }
+    if (this.pos < 0) { this.pos = 0; this.dir = 1; }
+    this.shake = Math.max(0, this.shake - dt * 30);
+  }
+  render(g: G, w: number, h: number) {
+    g.fillStyle = 'rgba(14,21,23,.55)'; g.fillRect(0, 0, w, h);
+    const cx = w / 2, base = Math.round(h * 0.5), s = this.shake ? Math.round((Math.random() - 0.5) * this.shake) : 0;
+    px(g, cx - 10 + s, base - 56, 20, 60, '#6d5338'); px(g, cx - 8 + s, base - 56, 5, 58, '#9b7a50'); ovalpx(g, cx + s, base - 56, 10, 3, '#c9a56c');
+    px(g, cx - 10 + s, base - 38, 20, 4, '#d9c08c');
+    for (let i = 0; i < this.hits; i++) px(g, cx - 6 + s + (i % 3) * 4, base - 30 + Math.floor(i / 3) * 6, 3, 1, '#3d2c1e');
+    const bw = Math.min(260, w - 40), bx = Math.round(cx - bw / 2), by = base + 20;
+    panel(g, bx, by, bw, 12);
+    const zw = Math.round(bw * this.zone), zx = Math.round(cx - zw / 2);
+    px(g, zx, by + 2, zw, 8, '#f0c27a'); px(g, Math.round(cx - zw / 4), by + 2, Math.round(zw / 2), 8, '#e07a52');
+    px(g, bx + Math.round(this.pos * (bw - 3)), by - 4, 3, 20, '#2b1a10');
+    if (this.last) { g.font = '700 14px "Pixelify Sans", sans-serif'; g.textAlign = 'center'; g.fillStyle = '#fff1d2'; g.fillText(this.last, cx, by + 36); g.textAlign = 'left'; }
+  }
+  press(down: boolean) {
+    if (!down || this.done) return;
+    const d = Math.abs(this.pos - 0.5);
+    const q = d < this.zone / 4 ? 1 : d < this.zone / 2 ? 0.65 : 0;
+    this.last = q === 1 ? 'Golpe perfeito!' : q ? 'Bom golpe' : 'Errou o tempo';
+    if (q) { this.shake = 6 + this.power * 0.5; this.zone = Math.max(0.08, this.zone - 0.02); }
+    this.total += q; this.hits++;
+    if (this.hits >= 6) { this.done = true; this.score = this.total / 6; }
+  }
+  status() { return `Golpe ${Math.min(6, this.hits + 1)}/6`; }
+}
+
+/** Meditação: segure para subir o chakra e mantenha-o dentro da faixa que se move. */
+export class ChakraGame implements Minigame {
+  title = 'Controle de chakra';
+  help = 'Segure E, espaço ou o botão A para subir o chakra; solte para descer. Fique dentro da faixa.';
+  done = false; score = 0;
+  private level = 0.2; private held = false; private t = 0; private inside = 0; private readonly length = 8;
+  constructor(private control: number) {}
+  private band() { const c = 0.5 + Math.sin(this.t * 0.9) * 0.28 + Math.sin(this.t * 2.1) * 0.06; const half = 0.09 + this.control * 0.006; return [c - half, c + half]; }
+  update(dt: number) {
+    if (this.done) return;
+    this.t += dt;
+    this.level = Math.max(0, Math.min(1, this.level + (this.held ? 0.75 : -0.6) * dt));
+    const [lo, hi] = this.band();
+    if (this.level >= lo && this.level <= hi) this.inside += dt;
+    if (this.t >= this.length) { this.done = true; this.score = Math.min(1, this.inside / (this.length * 0.85)); }
+  }
+  render(g: G, w: number, h: number) {
+    g.fillStyle = 'rgba(14,21,23,.6)'; g.fillRect(0, 0, w, h);
+    const gh = Math.min(150, h - 110), gx = Math.round(w / 2 - 9), gy = Math.round(h * 0.18);
+    panel(g, gx, gy, 18, gh);
+    const [lo, hi] = this.band();
+    const y = (v: number) => Math.round(gy + gh - v * gh);
+    px(g, gx + 2, y(hi), 14, y(lo) - y(hi), '#7fcbe0');
+    const ly = y(this.level);
+    const inBand = this.level >= lo && this.level <= hi;
+    px(g, gx - 6, ly - 1, 30, 3, inBand ? '#f0c27a' : '#2b1a10');
+    // Folha equilibrada na testa: brilha quando o controle está certo.
+    const lx = gx + 40, lyy = gy + 20;
+    ovalpx(g, lx, lyy, 8, 4, inBand ? '#a6d17a' : '#6f8f4f'); px(g, lx - 8, lyy, 16, 1, '#3e5a30');
+    px(g, gx + 24, gy + gh + 12, Math.round(((this.t / this.length) * 100)), 3, '#e07a52');
+  }
+  press(down: boolean) { this.held = down; }
+  status() { return `${Math.max(0, Math.ceil(this.length - this.t))} s`; }
+}
+
+/** Selos de mão: repita a sequência escolhendo o selo certo entre quatro. */
+export class SealsGame implements Minigame {
+  title = 'Sequência de selos';
+  help = 'Escolha o selo destacado. Teclas 1 a 4 ou toque. Rápido e sem errar.';
+  done = false; score = 0;
+  options: { label: string; sub: string }[] = [];
+  private seq: number[]; private idx = 0; private right = 0; private t = 0; private flash = 0; private wrong = false;
+  private choices: number[] = [];
+  constructor(count: number, private rand: () => number, private perSeal = 2.4) {
+    this.seq = Array.from({ length: count }, () => Math.floor(rand() * SEALS.length));
+    this.roll();
+  }
+  private roll() {
+    const target = this.seq[this.idx];
+    const pool = new Set<number>([target]);
+    while (pool.size < 4) pool.add(Math.floor(this.rand() * SEALS.length));
+    this.choices = [...pool].sort(() => this.rand() - 0.5);
+    this.options = this.choices.map((i) => ({ label: SEALS[i].kanji, sub: SEALS[i].name }));
+  }
+  update(dt: number) {
+    if (this.done) return;
+    this.t += dt; this.flash = Math.max(0, this.flash - dt * 3);
+    if (this.t > this.perSeal) this.choose(-1);
+  }
+  render(g: G, w: number, h: number) {
+    g.fillStyle = 'rgba(14,21,23,.6)'; g.fillRect(0, 0, w, h);
+    const n = this.seq.length, size = Math.min(34, Math.floor((w - 40) / n) - 6), total = n * (size + 6) - 6;
+    let x = Math.round(w / 2 - total / 2);
+    const y = Math.round(h * 0.2);
+    g.textAlign = 'center';
+    this.seq.forEach((s, i) => {
+      const cur = i === this.idx && !this.done;
+      panel(g, x, y + (cur ? -4 : 0), size, size);
+      if (i < this.idx) px(g, x, y, size, size, 'rgba(127,164,85,.35)');
+      if (cur && this.flash && this.wrong) px(g, x, y - 4, size, size, `rgba(194,85,63,${this.flash})`);
+      g.font = `700 ${Math.round(size * 0.62)}px serif`;
+      g.fillStyle = i < this.idx ? '#5a7a3e' : cur ? '#c2553f' : '#6b5139';
+      g.fillText(SEALS[s].kanji, x + size / 2, y + size * 0.72 + (cur ? -4 : 0));
+      x += size + 6;
+    });
+    g.textAlign = 'left';
+    if (!this.done) px(g, Math.round(w / 2 - 60), y + size + 12, Math.round(120 * (1 - this.t / this.perSeal)), 3, '#e07a52');
+  }
+  press() { /* selos usam escolha, não pressão */ }
+  choose(i: number) {
+    if (this.done) return;
+    const ok = i >= 0 && this.choices[i] === this.seq[this.idx];
+    if (ok) this.right += Math.max(0.55, 1 - this.t / (this.perSeal * 1.6));
+    this.wrong = !ok; this.flash = ok ? 0 : 1;
+    this.idx++; this.t = 0;
+    if (this.idx >= this.seq.length) { this.done = true; this.score = this.right / this.seq.length; this.options = []; }
+    else this.roll();
+  }
+  status() { return `Selo ${Math.min(this.seq.length, this.idx + 1)}/${this.seq.length}`; }
+}
+
+export function grade(score: number) {
+  return score >= 0.85 ? 'Excelente!' : score >= 0.6 ? 'Bom trabalho' : score >= 0.35 ? 'Razoável' : 'Precisa treinar mais';
+}
