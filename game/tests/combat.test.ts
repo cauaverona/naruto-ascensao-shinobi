@@ -3,6 +3,7 @@ import { makeFighter, startBattle, resolveRound, available, type Battle } from '
 import { chooseAction } from '../src/combat/ai';
 import { CHARACTERS } from '../src/data/characters';
 import { baseStats } from '../src/data/stats';
+import { HYOTON } from '../src/data/jutsus';
 import { Rng } from '../src/core/rng';
 
 function duel(seed = 1): Battle {
@@ -27,16 +28,40 @@ describe('combate', () => {
     expect(habits('shino').filter((action) => action === 'shuriken').length).toBeGreaterThan(8);
   });
 
-  it('distingue no evento um golpe em guarda de um acerto aberto', () => {
+  it('ativa a guarda antes de um atacante mais rápido e encerra a proteção na mesma rodada', () => {
     const battle = duel(7);
-    const foe = battle.fighters[1];
-    foe.stats.Velocidade = 20;
-    for (let i = 0; i < 10; i++) {
-      const events = resolveRound(battle, [{ type: 'taijutsu' }, { type: 'defend' }]);
-      const hit = events.find((event) => event.t === 'hit' && event.who === 1);
-      if (hit?.t === 'hit') { expect(hit.guarded).toBe(true); return; }
-    }
-    throw new Error('O ataque deveria acertar a guarda neste cenário.');
+    battle.fighters[0].stats.Velocidade = 20;
+    battle.fighters[1].stats.Velocidade = 1;
+    const defended = resolveRound(battle, [{ type: 'taijutsu' }, { type: 'defend' }]);
+    expect(defended.find((event) => event.t === 'act')).toMatchObject({ who: 1, label: 'Defender' });
+    expect(defended.find((event) => event.t === 'hit')).toMatchObject({ who: 1, guarded: true });
+    expect(battle.fighters[1].status.defending).toBe(false);
+    const exposed = resolveRound(battle, [{ type: 'taijutsu' }, { type: 'focus' }]);
+    expect(exposed.find((event) => event.t === 'hit')).toMatchObject({ who: 1, guarded: false });
+  });
+
+  it.each([['advance', 0], ['retreat', 2]] as const)('mantém a distância válida quando os dois escolhem %s', (type, zone) => {
+    const battle = duel();
+    battle.distance = 1;
+    battle.fighters[0].stats.Velocidade = 20;
+    const stamina = battle.fighters[1].stamina;
+    const events = resolveRound(battle, [{ type }, { type }]);
+    expect(battle.distance).toBe(zone);
+    expect(events.filter((event) => event.t === 'move')).toMatchObject([{ who: 0, distance: zone }]);
+    expect(battle.fighters[1].stamina).toBe(stamina);
+  });
+
+  it('usa taijutsu de longe para aproximar e permite golpear da distância média', () => {
+    const battle = duel(7);
+    battle.distance = 2;
+    const stamina = battle.fighters[0].stamina;
+    const move = resolveRound(battle, [{ type: 'taijutsu' }, { type: 'defend' }]);
+    expect(battle.distance).toBe(1);
+    expect(battle.fighters[0].stamina).toBe(stamina - 1);
+    expect(move.some((event) => event.t === 'strike')).toBe(false);
+    const strike = resolveRound(battle, [{ type: 'taijutsu' }, { type: 'defend' }]);
+    expect(battle.distance).toBe(0);
+    expect(strike.some((event) => event.t === 'strike')).toBe(true);
   });
   it('Katon tem alcance, gasta chakra no disparo e emite evento visual', () => {
     const battle = duel(5);
@@ -45,6 +70,10 @@ describe('combate', () => {
     const option = () => available(battle, 0).find(({ action }) => action.type === 'jutsu' && action.id === 'gokakyu');
     expect(option()?.ok).toBe(false);
     expect(option()?.why).toBe('Fora do alcance');
+    const chakra = fighter.chakra;
+    resolveRound(battle, [{ type: 'jutsu', id: 'gokakyu' }, { type: 'defend' }]);
+    expect(fighter.chakra).toBe(chakra);
+    expect(fighter.used.gokakyu).toBeUndefined();
     battle.distance = 1;
     expect(option()?.ok).toBe(true);
     let cast = false;
@@ -62,10 +91,59 @@ describe('combate', () => {
     }
     expect(cast).toBe(true);
   });
+  it('Hyōton causa geada num acerto aberto e a iniciativa consome o efeito em uma rodada', () => {
+    let found = false;
+    for (let seed = 1; seed <= 35 && !found; seed++) {
+      const b = duel(seed);
+      b.fighters[0].jutsus[HYOTON] = 100;
+      b.fighters[0].stats['Controle de chakra'] = 15;
+      const action = { type: 'jutsu', id: HYOTON } as const;
+      expect(available(b, 0).find(({ action }) => action.type === 'jutsu' && action.id === HYOTON)?.ok).toBe(false);
+      b.distance = 1;
+      const events = resolveRound(b, [action, { type: 'focus' }]);
+      if (!events.some((event) => event.t === 'chill')) continue;
+      expect(events).toContainEqual({ t: 'technique', who: 0, jutsu: HYOTON });
+      expect(events).toContainEqual({ t: 'chill', who: 1 });
+      expect(b.fighters[1].status.chilled).toBe(true);
+      b.fighters[0].stats.Velocidade = 4;
+      b.fighters[1].stats.Velocidade = 5;
+      const closeRoll = Array.from({ length: 50 }, (_, i) => i + 1).find((seed) => {
+        const rng = new Rng(seed);
+        return Math.abs(rng.next() - rng.next()) < 0.25;
+      });
+      expect(closeRoll).toBeDefined();
+      if (closeRoll === undefined) break;
+      b.rng = closeRoll;
+      const thawed = structuredClone(b);
+      thawed.fighters[1].status.chilled = false;
+      const focus = { type: 'focus' } as const;
+      expect(resolveRound(thawed, [focus, focus])[0]).toMatchObject({ t: 'act', who: 1 });
+      expect(resolveRound(b, [focus, focus])[0]).toMatchObject({ t: 'act', who: 0 });
+      expect(b.fighters[1].status.chilled).toBe(false);
+      found = true;
+    }
+    expect(found).toBe(true);
+  });
+
+  it('a guarda evita a geada, inclusive quando Estilhaços de Gelo acerta', () => {
+    let blocked = false;
+    for (let seed = 1; seed <= 20 && !blocked; seed++) {
+      const b = duel(seed);
+      b.distance = 1;
+      b.fighters[0].jutsus[HYOTON] = 100;
+      const events = resolveRound(b, [{ type: 'jutsu', id: HYOTON }, { type: 'defend' }]);
+      if (!events.some((event) => event.t === 'hit' && event.guarded)) continue;
+      expect(events.some((event) => event.t === 'chill')).toBe(false);
+      expect(b.fighters[1].status.chilled).toBe(false);
+      blocked = true;
+    }
+    expect(blocked).toBe(true);
+  });
+
   it('substituição anula o golpe e deixa o defensor atrás do atacante', () => {
     const b = duel(7);
     b.fighters[0].status.substitution = true;
-    b.fighters[0].stats.Velocidade = 1; // o adversário age primeiro
+    b.fighters[0].stats.Velocidade = 1;
     const hp = b.fighters[0].hp;
     let ev = resolveRound(b, [{ type: 'defend' }, { type: 'taijutsu' }]);
     // Pode errar; repete até o golpe conectar.

@@ -1,34 +1,38 @@
 // Controlador principal de telas, exploração e campanha.
 import './styles.css';
-import { CHARACTERS, CLASSMATES, type MapId, type Period } from './data/characters';
-import { accessorySet, OUTFITS, SCARVES } from './data/appearance';
+import { CHARACTERS, CLASSMATES, GUY_TEAM, type MapId, type Period } from './data/characters';
+import { accessorySet, bandPositionOf, BAND_POSITIONS, OUTFITS, SCARVES } from './data/appearance';
 import { origin, clanByName } from './data/clans';
 import { ACADEMY_STATS, combatPower, maxVitals, type Stat } from './data/stats';
 import { LESSONS, PERIODS, WEEKDAYS, EXAM_DAY, EXAM_MINIMUM, graduationGrade, ITEMS, QUESTIONS } from './data/academy';
 import { MAKI_SPOT, SEAL_CLUES, SEAL_DESTINATIONS } from './data/genin-assignments';
 import { MENTOR_LESSON, SUPPORT, type Tactic } from './data/squad';
-import { JUTSUS } from './data/jutsus';
+import { HYOTON, JUTSUS, type Jutsu } from './data/jutsus';
+import { TRAINING, trainingFor, type TrainingId } from './data/training';
+import { awakenHyoton, HYOTON_TRIAL_COST, HYOTON_TRIAL_SCORE, yukiTrial } from './systems/heritage';
 import { newCampaign, addLog, GAME_VERSION, LOOK_DEFAULTS, type Campaign, type Profile, type Settings } from './state/campaign';
-import { deleteSlot, readSlot, writeSlot, LAST_SLOT_KEY, SLOT_COUNT } from './state/save';
+import { deleteSlot, importSlot, readSlot, writeSlot, LAST_SLOT_KEY, MAX_SAVE_BYTES, SLOT_COUNT } from './state/save';
 import { restoreAll, applyTraining, learn, level, clampVitals, practice, statCost, train } from './systems/progression';
+import { guyPreference, requestGuyTeam } from './systems/team-guy';
 import { bond, bondLabel } from './systems/relations';
-import { dueEvents, resolveEvent, sleep, startAfternoon, spendAction } from './systems/world';
+import { academyMorning, dueEvents, extraTrainingLeft, resolveEvent, retakeDay, sleep, startAfternoon, spendAction, spendExtraTraining } from './systems/world';
 import {
-  beginGenin, beginPatrol, beginSealCase, checkPatrolPost, collectSupply, combatStats, equippedGear, finishGenin,
-  geninStage, GEAR, nextPatrolPost, recordSealClue, reportPatrol, rescueTora, resolveBells, sealCase, sealClueCount,
+  acceptMission, beginGenin, checkPatrolPost, collectSupply, combatStats, deferMission, equippedGear, finishGenin,
+  geninStage, GEAR, missionDeferred, MISSION_OFFERS, nextPatrolPost, pendingMission, recordSealClue, reportPatrol, rescueTora, resolveBells, sealCase, sealClueCount,
   senseiId, setToraPlan, settlePatrolDuel, solveSealCase, SUPPLIES, teamMembers, toraRoute, toraTactic, TORA_TRAILS,
-  turnInSupplies, turnInTora, type GearId, type GeninStage,
+  turnInSupplies, turnInTora, type GearId, type GeninStage, type MissionOffer,
 } from './systems/genin';
 import { talk } from './content/dialogue';
-import { KunaiGame, StrikeGame, ChakraGame, SealsGame, grade, type Minigame } from './scenes/minigames';
+import { KunaiGame, StrikeGame, ChakraGame, SealsGame, ObservationGame, JutsuPracticeGame, grade, type Minigame } from './scenes/minigames';
 import { ToraGame } from './scenes/tora';
 import { drawAssignmentProp, drawSupply, drawTora, drawTrack } from './render/mission-art';
 import { BattleScene } from './scenes/battle';
 import { makeFighter, startBattle } from './combat/engine';
 import { randomSeed, Rng } from './core/rng';
-import { drawActor, portrait, idlePose, spritesReady, clothes, skinSet, hairSet, trimSet, bandSet, CUTS, FEMININE_CUT, ACCESSORIES, MARKS, type Actor, type Dir } from './render/sprites';
+import { drawActor, portrait, drawDialoguePortrait, idlePose, spritesReady, clothes, skinSet, hairSet, trimSet, bandSet, CUTS, FEMININE_CUT, ACCESSORIES, MARKS, type Actor, type Dir } from './render/sprites';
 import { px } from './render/gfx';
 import { audio } from './audio';
+import { renderMapAtlas, type MapGoal } from './render/maps/atlas';
 import { blocked, type GameMap } from './render/maps/types';
 import { buildStreet } from './render/maps/street';
 import { buildField } from './render/maps/field';
@@ -118,7 +122,39 @@ deleteDialog.addEventListener('close', () => {
   openSlots(message, index);
 });
 
-function openSlots(message = 'Saves da v0.2.0 são atualizados automaticamente.', focusSlot = 0) {
+const saveFile = $<HTMLInputElement>('save-file');
+let importTarget: number | null = null;
+saveFile.onchange = async () => {
+  const index = importTarget;
+  const file = saveFile.files?.[0];
+  importTarget = null;
+  saveFile.value = '';
+  if (index === null || !file) return;
+  let message = 'O arquivo escolhido não contém uma jornada compatível.';
+  if (file.size > MAX_SAVE_BYTES) message = 'O arquivo excede o tamanho máximo de 1 MB.';
+  else {
+    try {
+      const result = importSlot(localStorage, index, await file.text());
+      if (result.ok) message = `Save importado para a jornada ${index + 1}.`;
+      else if (result.reason === 'conflict') message = 'A jornada foi preenchida. Escolha outro slot vazio.';
+      else if (result.reason === 'storage') message = 'O navegador não conseguiu guardar o save importado.';
+    } catch { message = 'Não foi possível ler o arquivo escolhido.'; }
+  }
+  if (screen === 'slots') openSlots(message, index);
+};
+
+function exportSave(campaign: Campaign, index: number) {
+  const url = URL.createObjectURL(new Blob([JSON.stringify(campaign)], { type: 'application/json' }));
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `ascensao-jornada-${index + 1}.json`;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 15000);
+}
+
+function openSlots(message = '', focusSlot = 0) {
   show('slots');
   c = null;
   $('slot-status').textContent = message;
@@ -157,6 +193,24 @@ function openSlots(message = 'Saves da v0.2.0 são atualizados automaticamente.'
       };
     }
     card.append(b);
+    const actions = el('div', 'slot-actions');
+    if (info?.kind === 'empty') {
+      const upload = el('button', 'ghost slot-import', 'Importar save') as HTMLButtonElement;
+      upload.type = 'button';
+      upload.setAttribute('aria-label', `Importar save na jornada ${i + 1}`);
+      upload.onclick = () => { importTarget = i; saveFile.click(); };
+      actions.append(upload);
+    } else if (info?.kind === 'ok') {
+      const download = el('button', 'ghost slot-export', 'Exportar save') as HTMLButtonElement;
+      download.type = 'button';
+      download.setAttribute('aria-label', `Exportar save da jornada ${i + 1}`);
+      download.onclick = () => {
+        const current = safeRead(i);
+        if (current?.kind === 'ok') exportSave(current.campaign, i);
+        else openSlots('A jornada mudou. Confira os saves disponíveis.', i);
+      };
+      actions.append(download);
+    }
     if (info && info.raw !== null) {
       const raw = info.raw;
       const del = document.createElement('button');
@@ -168,8 +222,9 @@ function openSlots(message = 'Saves da v0.2.0 são atualizados automaticamente.'
         deleteDialog.returnValue = 'cancel';
         deleteDialog.showModal();
       };
-      card.append(del);
+      actions.append(del);
     }
+    if (actions.childElementCount) card.append(actions);
     box.append(card);
   }
   for (const b of menuButtons(box)) {
@@ -179,7 +234,7 @@ function openSlots(message = 'Saves da v0.2.0 são atualizados automaticamente.'
 }
 
 // ——— Criação de personagem ———
-type Key = keyof Profile | 'difficulty' | 'fidelity';
+type Key = Exclude<keyof Profile, 'bandAtWaist' | 'bandPosition'> | 'difficulty' | 'fidelity';
 interface Opt { key: Key; label: string; values: readonly string[]; colors?: Record<string, string | readonly string[]>; describe?: (v: string) => string }
 const palette = (key: Key, label: string, colors: NonNullable<Opt['colors']>): Opt => ({ key, label, colors, values: Object.keys(colors) });
 const LABELS: Record<string, string> = { facil: 'Fácil', normal: 'Normal', dificil: 'Difícil', fiel: 'Fiel ao anime', equilibrado: 'Equilibrado', alternativo: 'Mundo alternativo' };
@@ -409,7 +464,7 @@ const DAY1: Record<string, { x: number; y: number; dir: Dir; route?: [number, nu
 function actorFor(id: string): Actor {
   const d = CHARACTERS[id];
   const grad = String(c?.flags[`exame:${id}`] ?? '').startsWith('aprovado');
-  return { role: d.role, look: d.look, bandana: grad || d.rank === 'Jōnin' || id === 'maki' };
+  return { role: d.role, look: d.look, spriteId: id, bandana: grad || d.rank === 'Jōnin' || d.rank === 'Genin' };
 }
 
 function placeNpcs() {
@@ -418,6 +473,7 @@ function placeNpcs() {
   const stage = geninStage(c);
   const rally = stage ? mentorLocation(stage) : null;
   const team = stage ? teamMembers(c) : [];
+  const deferred = missionDeferred(c);
   for (const d of Object.values(CHARACTERS)) {
     if (c.npcs[d.id]?.alive === false) continue;
     let spot: { x: number; y: number; dir?: Dir; route?: [number, number][]; map?: MapId } | undefined;
@@ -426,7 +482,7 @@ function placeNpcs() {
     if (stage && d.id === senseiId(c)) spot = rally ?? { map: 'campo', x: 318, y: 266, dir: 'down' };
     const member = team.indexOf(d.id);
     if (member >= 0) {
-      if (rally) spot = { ...rally, x: rally.x + (member === 0 ? -30 : 30), y: rally.y + 12 };
+      if (rally && !deferred) spot = { ...rally, x: rally.x + (member === 0 ? -30 : 30), y: rally.y + 12 };
       if (stage === 'suprimentos' && !c.flags[SUPPLIES[member].id]) {
         const supply = SUPPLIES[member];
         spot = { map: 'campo', x: supply.x + 23, y: supply.y - 3, dir: 'left' };
@@ -442,26 +498,32 @@ function placeNpcs() {
     // Naruto só aparece no Ichiraku à noite depois da pegadinha se não estiver limpando o monumento.
     npcs.push({ id: d.id, actor: actorFor(d.id), name: d.name, x: spot.x, y: spot.y, dir: spot.dir ?? 'down', frame: -1, route: spot.route ?? [], idx: 0, rest: 1.5, dist: 0 });
   }
+  if (stage === 'ondas' && c.map === 'rua') {
+    npcs.push({ id: 'tazuna', name: 'Tazuna', actor: TAZUNA, ...TAZUNA_SPOT, dir: 'down', frame: -1, route: [], idx: 0, rest: 0, dist: 0 });
+  }
 }
 
 const GENIN_OBJECTIVES: Record<GeninStage, string> = {
   encontro: 'Encontre seu sensei no Campo de Treino',
   sinos: 'Fale com seu sensei para começar o teste dos sinos',
+  'suprimentos-ordem': 'Missão disponível · Suprimentos do campo',
   suprimentos: 'Missão D · Confira os suprimentos com a equipe no Campo de Treino',
   entrega: 'Missão D · Entregue os suprimentos ao sensei na Rua da Academia',
+  'tora-ordem': 'Missão disponível · Captura de Tora',
   busca: 'Missão D · Examine os rastros de Tora no Campo de Treino',
   retorno: 'Missão D · Leve Tora de volta ao sensei',
-  'selo-ordem': 'Fale com o sensei para investigar a encomenda',
+  'selo-ordem': 'Missão disponível · O lacre trocado',
   'selo-pistas': 'Missão D · Examine as pistas na Rua da Academia',
-  'patrulha-ordem': 'Fale com o sensei para receber o percurso da ronda',
+  'patrulha-ordem': 'Missão disponível · A ronda das lanternas',
   'patrulha-rota': 'Missão D · Confira os pontos de ronda no Campo de Treino',
   'patrulha-relato': 'Missão D · Relate a ronda ao sensei na Rua da Academia',
-  ondas: 'Conheça o cliente do País das Ondas na Rua da Academia',
+  ondas: 'Fale com Tazuna na Rua da Academia',
   concluida: 'Vida Genin concluída · Continue treinando e explorando Konoha',
 };
 
+const TAZUNA_SPOT = { x: 649, y: 212 };
 const TAZUNA: Actor = {
-  role: 'player', look: { skin: 'Bronzeada', hair: 'Prateado', cut: 'Curto', coat: 'Azul-claro',
+  role: 'player', spriteId: 'tazuna', look: { skin: 'Bronzeada', hair: 'Prateado', cut: 'Curto', coat: 'Azul-claro',
     outfit: 'Túnica cruzada', scarf: 'Lenço curto', trim: 'Preto', accessory: 'Óculos redondos', accessoryTone: 'Bronze' },
 };
 
@@ -470,17 +532,17 @@ function toraSpot(campaign: Campaign) {
   return { id: 'tora', x, y, r: 22, label: 'Tora' };
 }
 function mentorLocation(stage: GeninStage): (Pick<Npc, 'x' | 'y' | 'dir'> & { map: MapId }) | null {
-  if (stage === 'encontro' || stage === 'sinos') return { map: 'campo', x: 318, y: 266, dir: 'down' };
-  if (stage === 'entrega' || stage === 'retorno' || stage === 'ondas'
+  if (stage === 'encontro' || stage === 'sinos' || stage === 'suprimentos-ordem') return { map: 'campo', x: 318, y: 266, dir: 'down' };
+  if (stage === 'entrega' || stage === 'tora-ordem' || stage === 'retorno' || stage === 'ondas'
     || stage === 'selo-ordem' || stage === 'selo-pistas' || stage === 'patrulha-ordem' || stage === 'patrulha-relato') return { map: 'rua', x: 630, y: 224, dir: 'down' };
   return null;
 }
 
-function missionSpots() {
+function missionSpots(area = c?.map) {
   if (!c) return [];
   const stage = geninStage(c);
-  if (c.map === 'rua' && stage === 'selo-pistas') return [...SEAL_CLUES];
-  if (c.map !== 'campo') return [];
+  if (area === 'rua' && stage === 'selo-pistas') return [...SEAL_CLUES];
+  if (area !== 'campo') return [];
   if (stage === 'patrulha-rota') {
     const post = nextPatrolPost(c);
     return post ? [post] : [];
@@ -493,9 +555,56 @@ function missionSpots() {
 }
 function worldSpots() { return [...map().spots, ...missionSpots()]; }
 
+const MISSION_BRIEFINGS: Record<MissionOffer, string[]> = {
+  'suprimentos-ordem': ['Tem três caixas no Campo. Confirme o material com cada colega e recolha a que sobrar.', 'Depois, tragam o material de volta para a Rua da Academia.'],
+  'tora-ordem': ['A cliente perdeu o gato Tora. Há rastros pelo Campo de Treino.', 'Examine as pistas e escolha quem vai ajudar na captura.'],
+  'selo-ordem': ['A chuva apagou a etiqueta de uma encomenda. Ache o livro de entregas, o fragmento de cera e o canhoto na rua.', 'Volte quando descobrir o destino.'],
+  'patrulha-ordem': ['Siga do lado leste do Campo de Treino até a marca da ronda ao sul.', 'Confira os dois postos. Maki, da guarda de Konoha, espera no fim do percurso.'],
+};
+
+async function offerMission(camp: Campaign, offer: MissionOffer, who: { name: string; actor: Actor }) {
+  const { name } = MISSION_OFFERS[offer];
+  const decision = await say(who, [`Missão Rank D · ${name}`, ...MISSION_BRIEFINGS[offer]], [
+    { id: 'aceitar', label: 'Aceitar agora' },
+    { id: 'depois', label: 'Treinar primeiro' },
+  ]);
+  if (decision === 'depois') {
+    deferMission(camp, offer);
+    return;
+  }
+  if (decision !== 'aceitar') return;
+  const ally = offer === 'selo-ordem' ? await chooseSupport(camp, 'Quem vai ajudar a cruzar as pistas da encomenda?', 'Investigar por conta própria') : '';
+  acceptMission(camp, offer, ally);
+}
+
+async function talkToTazuna(who: { name: string; actor: Actor }) {
+  const camp = c;
+  if (!camp || geninStage(camp) !== 'ondas') return;
+  const decision = await say(who, [
+    'Sou Tazuna. Estou construindo uma ponte no País das Ondas e preciso de escolta até lá.',
+    'No papel é uma missão de rank C. Se quiserem conferir o percurso, esta é a hora.',
+  ], [
+    { id: 'investigar', label: 'Pedir detalhes sobre o risco' },
+    { id: 'aceitar', label: 'Aceitar a escolta' },
+    { id: 'depois', label: 'Conversar mais tarde' },
+  ]);
+  if ((decision === 'investigar' || decision === 'aceitar') && finishGenin(camp, decision)) {
+    placeNpcs();
+    save();
+    await say(who, [decision === 'investigar' ? 'Tudo bem. Conto mais sobre o caminho antes da partida.' : 'Tenho muita coisa para terminar na ponte. Conto com sua equipe.',
+      'Vida Genin concluída. Sua decisão ficou registrada no diário.']);
+  }
+}
+
 async function talkToSensei(who: { name: string; actor: Actor }) {
   const active = c;
   if (!active) return;
+  const offer = pendingMission(active);
+  if (offer) {
+    await offerMission(active, offer, who);
+    placeNpcs();
+    return;
+  }
   const team = teamMembers(active);
   switch (geninStage(active)) {
     case 'encontro': {
@@ -526,27 +635,17 @@ async function talkToSensei(who: { name: string; actor: Actor }) {
         return;
       }
       await say(who, [score >= 0.6 ? 'Vocês entraram no tempo certo e voltaram juntos. Passaram.' : 'A entrada foi apertada. Vocês se reorganizaram a tempo e estão aprovados.',
-        'Primeira missão de rank D. A equipe vai se dividir para localizar o material. Confira a caixa de cada colega e recolha a que sobrar. Depois, encontrem-me na Rua da Academia.']);
+        'Temos um primeiro trabalho de rank D. Treinem ou descansem. Quando estiverem prontos, falem comigo para conhecer a missão.']);
       break;
     }
     case 'entrega':
       if (turnInSupplies(active)) await say(who, ['Suprimentos conferidos. Aqui estão os 80 ryō da missão.',
-        'A próxima missão é buscar Tora. Há rastros pelo Campo de Treino. Examinem as pistas e escolham quem vai ajudar na captura.']);
+        'Há outro trabalho reservado. Voltem quando quiserem receber a próxima missão.']);
       break;
     case 'retorno':
       if (turnInTora(active)) await say(who, ['Tora voltou para casa. A cliente deixou 110 ryō pela missão.',
         'Uma encomenda ficou sem destino. Fale comigo de novo quando quiser examinar o caso.']);
       break;
-    case 'selo-ordem': {
-      const decision = await say(who, ['Missão D: O lacre trocado. A chuva apagou a etiqueta de uma encomenda, mas deixou três pistas pela rua.',
-        'Ache o livro de entregas, o fragmento de cera e o canhoto. Volte aqui quando conseguir dizer para onde a encomenda vai.'],
-      [{ id: 'aceitar', label: 'Aceitar O lacre trocado' }, { id: 'depois', label: 'Voltar mais tarde' }]);
-      if (decision === 'aceitar') {
-        const ally = await chooseSupport(active, 'Quem vai ajudar a cruzar as pistas da encomenda?', 'Investigar por conta própria');
-        beginSealCase(active, ally);
-      }
-      break;
-    }
     case 'selo-pistas': {
       const count = sealClueCount(active);
       if (count < SEAL_CLUES.length) {
@@ -575,30 +674,14 @@ async function talkToSensei(who: { name: string; actor: Actor }) {
       }
       break;
     }
-    case 'patrulha-ordem': {
-      const decision = await say(who, ['Missão D: A ronda das lanternas. Siga do lado leste do Campo de Treino até a marca da ronda ao sul.',
-        'Confirme os dois postos. Maki, da guarda de Konoha, vai testar o time no fim do percurso.'],
-      [{ id: 'aceitar', label: 'Aceitar A ronda das lanternas' }, { id: 'depois', label: 'Voltar mais tarde' }]);
-      if (decision === 'aceitar') beginPatrol(active);
-      break;
-    }
     case 'patrulha-relato':
       if (reportPatrol(active)) await say(who, ['Os postos estão confirmados e Maki assinou o relatório. A ronda rendeu 150 ryō.',
         active.flags['ondas-postura'] ? 'Seu relatório foi anexado ao registro da escolta de Tazuna.' :
-          'Chegou um pedido de escolta. Fale comigo de novo para conhecer o cliente.']);
+          'Chegou um pedido de escolta. Quando quiser, fale com Tazuna aqui na rua.']);
       break;
-    case 'ondas': {
-      const decision = await say({ name: 'Tazuna', actor: TAZUNA }, [
-        'Sou Tazuna. Estou construindo uma ponte no País das Ondas e preciso de escolta até lá.',
-        'No papel é uma missão de rank C. Se quiserem conferir o percurso, esta é a hora.',
-      ], [{ id: 'investigar', label: 'Pedir detalhes sobre o risco' }, { id: 'aceitar', label: 'Aceitar a escolta' }]);
-      if (decision !== 'investigar' && decision !== 'aceitar') return;
-      if (finishGenin(active, decision)) {
-        await say(who, [decision === 'investigar' ? 'Vou conferir as informações antes da partida.' : 'Vou avisar à administração que a equipe aceitou a missão.',
-          'Vida Genin concluída. Sua decisão ficou registrada no diário.']);
-      }
-      break;
-    }
+    case 'ondas':
+      await say(who, ['Tazuna está ao meu lado. Fale com ele quando quiser saber sobre a escolta.']);
+      return;
     default: await say(who, talk(active, senseiId(active))); return;
   }
   placeNpcs();
@@ -637,7 +720,8 @@ async function catchTora() {
 
 async function patrolDuel(who: { name: string; actor: Actor }) {
   if (!c || geninStage(c) !== 'patrulha-rota' || nextPatrolPost(c)) return;
-  const decision = await say(who, ['Sou Maki, da guarda. Poste aceso, marca conferida. Agora mostrem como a equipe reage quando alguém fecha a passagem.'],
+  const decision = await say(who, ['Sou Maki, da guarda. Poste aceso, marca conferida. Agora mostrem como a equipe reage quando alguém fecha a passagem.',
+    'Nesta missão, as kunai e os shuriken que você usar saem do estoque.'],
     [{ id: 'pronto', label: 'Começar o duelo da ronda' }, { id: 'depois', label: 'Preparar a equipe' }]);
   if (decision !== 'pronto') return;
   const ally = await chooseSupport(c, 'Quem vai preparar a entrada no duelo?');
@@ -650,10 +734,12 @@ async function patrolDuel(who: { name: string; actor: Actor }) {
   const won = await runBattle('maki', 'Ronda das lanternas', { tactic });
   if (settlePatrolDuel(c, won === true)) {
     if (ally) bond(c, ally, { confianca: 4 }, 'Preparou comigo a entrada no duelo da ronda.');
-    await say(who, ['Perceberam a abertura e mantiveram a passagem segura. Levem meu relatório ao sensei.']);
     placeNpcs();
+    save();
+    await say(who, ['Perceberam a abertura e mantiveram a passagem segura. Levem meu relatório ao sensei.']);
   } else {
     restoreAll(c);
+    save();
     await say(who, ['Pausa para água. A ronda continua aqui. Quando estiver pronto, tente de novo, com outra abertura se quiser.']);
   }
 }
@@ -676,6 +762,7 @@ function enterMap(id: MapId, x: number, y: number, dir: Dir, fade = true) {
   const go = () => {
     if (!c) return;
     c.map = id; c.x = x; c.y = y; c.dir = dir;
+    if (id === 'campo' && c.period === 0 && academyMorning(c) === 'free' && retakeDay(c) !== null) startAfternoon(c);
     if (!c.seen.includes(id)) c.seen.push(id);
     const changed = shownMap !== id; shownMap = id;
     placeNpcs();
@@ -718,7 +805,9 @@ window.addEventListener('resize', () => { size(); if (c) camera = limits(); });
 function refresh() {
   if (!c) return;
   const v = maxVitals(c.stats);
-  $('clock').textContent = `Dia ${c.day} · ${WEEKDAYS[(c.day - 1) % 7]} · ${PERIODS[c.period]}${c.period === 1 ? ` · ${c.actions} ${c.actions === 1 ? 'ação' : 'ações'}` : ''}`;
+  const extra = c.map === 'campo' ? extraTrainingLeft(c) : 0;
+  const actionCount = c.period === 1 ? ` · ${c.actions} ${c.actions === 1 ? 'ação' : 'ações'}` : extra ? ` · ${extra} ${extra === 1 ? 'treino extra' : 'treinos extras'}` : '';
+  $('clock').textContent = `Dia ${c.day} · ${WEEKDAYS[(c.day - 1) % 7]} · ${PERIODS[c.period]}${actionCount}`;
   $('who').textContent = c.profile.name;
   $('rank').textContent = `${c.rank} · Nível ${level(c)}`;
   $('bars').replaceChildren(...([['PV', c.hp, v.hp, 'var(--hp)'], ['CH', c.chakra, v.chakra, 'var(--ch)'], ['RES', c.stamina, v.stamina, 'var(--st)']] as const).map(([a, b, mx, col]) => {
@@ -746,6 +835,7 @@ function objective(cc: Campaign): string {
   if (cc.quest === 'matricula-ficha') return 'Pegue a ficha no quadro de avisos';
   if (cc.quest === 'matricula-entrega') return 'Entregue a ficha a Iruka';
   const stage = geninStage(cc);
+  if (missionDeferred(cc)) return `Treino livre · Fale com ${CHARACTERS[senseiId(cc)].name} quando quiser aceitar a missão`;
   if (stage === 'busca' && cc.flags['tora-rastro']) return 'Missão D · Aproxime-se de Tora no esconderijo';
   if (stage === 'selo-pistas') {
     const count = sealClueCount(cc);
@@ -755,14 +845,17 @@ function objective(cc: Campaign): string {
   if (stage === 'suprimentos') return `${GENIN_OBJECTIVES.suprimentos} · ${SUPPLIES.filter((item) => cc.flags[item.id]).length}/3`;
   if (stage) return GENIN_OBJECTIVES[stage];
   if (cc.rank === 'Genin') return 'Você é genin! Amanhã saem as equipes';
-  const retake = cc.flags['exame:player'] === 'reprovado' ? Number(cc.flags.repescagem) : 0;
+  const retake = retakeDay(cc);
   if (cc.period === 0) {
-    if (retake) return cc.day >= retake ? 'Repescagem hoje! Entre na Academia' : `Repescagem no dia ${retake}. Treine o Bunshin`;
-    if (cc.day >= EXAM_DAY && !cc.lessonsDone.includes(cc.day)) return 'Exame de graduação hoje! Entre na Academia';
-    const l = todayLesson(cc);
-    return l && !cc.lessonsDone.includes(cc.day) ? `Aula de hoje: ${l.title}. Entre na Academia` : 'Manhã livre';
+    const session = academyMorning(cc);
+    if (session === 'exam') return retake !== null ? 'Repescagem hoje! Entre na Academia' : 'Exame de graduação hoje! Entre na Academia';
+    if (retake !== null) return `Repescagem dia ${retake} · Vá ao Campo de Treino`;
+    return session === 'lesson' ? `Aula de hoje: ${todayLesson(cc)?.title}. Entre na Academia` : 'Manhã livre';
   }
+  if (cc.period === 1 && retake !== null) return `Repescagem dia ${retake} · Treine o Bunshin ou fale com Iruka · ${cc.actions} ações`;
   if (cc.period === 1) return `Tarde livre: treine no Campo de Treino (oeste) · ${cc.actions} ações`;
+  const extra = extraTrainingLeft(cc);
+  if (extra && cc.map === 'campo') return `${extra} ${extra === 1 ? 'treino extra disponível' : 'treinos extras disponíveis'} · Descanse quando quiser`;
   return 'Noite: jante no Ichiraku ou volte para casa e durma';
 }
 
@@ -785,7 +878,12 @@ function say(who: { name: string; actor?: Actor } | null, lines: string[], choic
   $('speaker').textContent = who?.name ?? '';
   const h = $<HTMLCanvasElement>('head');
   h.hidden = !who?.actor;
-  if (who?.actor) { const hg = h.getContext('2d')!; hg.imageSmoothingEnabled = false; hg.clearRect(0, 0, 40, 40); hg.drawImage(portrait(who.actor), 0, 0); }
+  if (who?.actor) {
+    const hg = h.getContext('2d')!;
+    hg.imageSmoothingEnabled = false;
+    hg.clearRect(0, 0, h.width, h.height);
+    drawDialoguePortrait(hg, who.actor);
+  }
   renderLine();
   return new Promise((res) => (dialogResolve = res));
 }
@@ -839,13 +937,39 @@ async function interact() {
   dirty = true; save(); refresh();
 }
 
+async function talkToGuy(who: { name: string; actor: Actor }) {
+  if (!c) return;
+  if (c.quest.startsWith('matricula')) {
+    await say(who, ['Primeiro entregue sua matrícula a Iruka. Depois venha treinar com a gente.']);
+    return;
+  }
+  const preferred = guyPreference(c);
+  const choice = await say(who, [
+    'Rock Lee, Neji e Tenten são Genin do Time 3. Pode treinar com eles enquanto estiver na Academia.',
+    preferred ? `Sua preferência está registrada com ${CHARACTERS[preferred].name}. Podemos trocar até a formação das equipes.` :
+      'Na sua graduação eu posso abrir uma vaga no nosso rodízio. Escolha um parceiro e eu sorteio o outro entre os dois restantes.',
+  ], [
+    ...GUY_TEAM.filter((id) => c!.npcs[id]?.alive).map((id) => ({ id, label: `Pedir vaga com ${CHARACTERS[id].name}` })),
+    ...(preferred ? [{ id: 'cancelar', label: 'Voltar ao sorteio regular' }] : []),
+    { id: 'depois', label: 'Decidir mais tarde' },
+  ]);
+  if (choice === 'depois') return;
+  if (choice === 'cancelar' && requestGuyTeam(c, null)) {
+    await say(who, ['Tudo bem. Iruka vai incluir você no sorteio regular.']);
+    return;
+  }
+  if (requestGuyTeam(c, choice)) {
+    await say(who, [`Registrado. Depois de passar no exame, você vai para o Time 3 com ${CHARACTERS[choice].name} e mais um dos nossos Genin.`]);
+  }
+}
+
 async function talkTo(n: Npc) {
   if (!c) return;
   n.dir = face(c.x - n.x, c.y - n.y, n.dir);
   c.dir = face(n.x - c.x, n.y - c.y, c.dir);
   const who = { name: n.name, actor: n.actor };
   if (n.id === 'iruka' && c.quest === 'matricula-entrega') {
-    await say(who, [`A ficha está em ordem, ${c.profile.name}. Vou colocar seu nome na lista da turma.`, 'Matrícula confirmada! As aulas começam amanhã cedo. Hoje à tarde, aproveite para conhecer o Campo de Treino, a oeste.']);
+    await say(who, [`A ficha está em ordem, ${c.profile.name}. Vou colocar seu nome na lista da turma.`, 'Matrícula confirmada! As aulas começam amanhã cedo. Hoje à tarde, aproveite para conhecer o Campo de Treino, a oeste. Guy e os Genin dele treinam lá.']);
     c.quest = 'aula'; c.lessonsDone.push(1);
     bond(c, 'iruka', { confianca: 5 }, 'Matriculou-se na minha turma.');
     addLog(c, 'Iruka confirmou sua matrícula na Academia.');
@@ -854,9 +978,11 @@ async function talkTo(n: Npc) {
     return;
   }
   if (n.id === 'gen') { await shop(who); return; }
+  if (n.id === 'tazuna') { await talkToTazuna(who); return; }
   const stage = geninStage(c);
   if (stage && n.id === senseiId(c)) { await talkToSensei(who); return; }
   if (n.id === 'maki') { await patrolDuel(who); return; }
+  if (n.id === 'guy' && !c.flags.equipe) { await talkToGuy(who); return; }
   const member = teamMembers(c).indexOf(n.id);
   if (stage === 'suprimentos' && member >= 0 && !c.flags[SUPPLIES[member].id]) {
     const supply = SUPPLIES[member];
@@ -898,7 +1024,8 @@ async function talkTo(n: Npc) {
   }
   const lines = talk(c, n.id);
   const npcState = c.npcs[n.id];
-  if (npcState && npcState.talkedDay !== c.day && (CHARACTERS[n.id].classmate || n.id === 'iruka')) {
+  const trainingPartner = CHARACTERS[n.id].classmate || GUY_TEAM.some((id) => id === n.id);
+  if (npcState && npcState.talkedDay !== c.day && (trainingPartner || n.id === 'iruka')) {
     npcState.talkedDay = c.day;
     bond(c, n.id, { amizade: 3 });
   }
@@ -915,7 +1042,7 @@ async function talkTo(n: Npc) {
     }
     return;
   }
-  if (CHARACTERS[n.id].classmate && c.period === 1) {
+  if (trainingPartner && c.period === 1) {
     const classic = c.era === 'classico' && n.id === 'sasuke' && !('gokakyu' in c.jutsus);
     const ch = await say(who, lines, [
       { id: 'luta', label: 'Desafiar para um treino de luta (1 ação)' },
@@ -1006,27 +1133,33 @@ async function useSpot(id: string) {
     case 'academia': return academyDoor();
     case 'casa': return home();
     case 'ichiraku': return ramen();
-    case 'troncos': case 'alvos': case 'meditacao': return trainSpot(id);
+    case 'troncos': case 'alvos': return trainSpot(id);
+    case 'meditacao': return meditationSpot();
+    case 'circuito': return chooseTraining(['arrancadas', 'folego', 'resistencia']);
+    case 'estudo': return chooseTraining(['leitura', 'ilusao', 'moldagem']);
     case 'selos': return practiceSpot();
     case 'carteira': await say(null, ['Seu nome está escrito a lápis no canto da carteira.']); return;
   }
 }
 
-function afterAction() {
+function afterAction(solo = false) {
   if (!c) return;
-  const dusk = spendAction(c);
-  if (dusk) {
+  if (solo && c.period === 2) { spendExtraTraining(c); return; }
+  if (spendAction(c)) {
     placeNpcs();
-    toast('O sol se põe sobre Konoha. Hora de jantar e descansar.');
+    toast('Anoiteceu. O Campo ainda tem dois treinos extras opcionais.');
   }
 }
 
 // ——— Minijogos ———
 let mini: Minigame | null = null;
-let miniResolve: ((score: number) => void) | null = null;
+let miniResolve: ((score: number | null) => void) | null = null;
+let shownMiniOptions: Minigame['options'];
+const miniCancel = $<HTMLButtonElement>('mini-cancel');
 function renderMiniOptions() {
   const box = $('mini').querySelector<HTMLElement>('.mini-opts')!;
-  box.replaceChildren(...(mini?.options ?? []).map((o, i) => {
+  shownMiniOptions = mini?.options;
+  box.replaceChildren(...(shownMiniOptions ?? []).map((o, i) => {
     const b = document.createElement('button');
     b.type = 'button';
     b.innerHTML = '<b></b><small></small>';
@@ -1036,7 +1169,9 @@ function renderMiniOptions() {
     return b;
   }));
 }
-function runMini(mg: Minigame): Promise<number> {
+function runMini(mg: Minigame): Promise<number>;
+function runMini(mg: Minigame, cancelable: true): Promise<number | null>;
+function runMini(mg: Minigame, cancelable = false): Promise<number | null> {
   busy = true; held.clear();
   mini = mg;
   const box = $('mini');
@@ -1046,60 +1181,205 @@ function runMini(mg: Minigame): Promise<number> {
   const action = $<HTMLButtonElement>('mini-action');
   action.hidden = !!mg.choose;
   action.disabled = false;
+  miniCancel.hidden = !cancelable;
   action.textContent = mg instanceof ToraGame ? 'Aproximar · A' : mg instanceof ChakraGame ? 'Segure · A' : 'Agir · A';
   renderMiniOptions();
+  if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
   return new Promise((res) => (miniResolve = res));
 }
+function closeMini() {
+  $('mini').hidden = true;
+  miniCancel.hidden = true;
+  mini = null;
+  busy = false;
+}
+miniCancel.onclick = () => {
+  if (miniCancel.hidden || !miniResolve || mini?.done) return;
+  const resolve = miniResolve;
+  miniResolve = null;
+  closeMini();
+  resolve(null);
+};
 function miniTick(dt: number) {
   if (!mini) return;
   mini.update(dt);
   $('mini').querySelector('.mini-help')!.textContent = mini.done ? mini.help : `${mini.status()} · ${mini.help}`;
-  if (mini.options && $('mini').querySelectorAll('.mini-opts button').length !== mini.options.length) renderMiniOptions();
+  if (mini.options !== shownMiniOptions) renderMiniOptions();
   if (mini.done && miniResolve) {
     const r = miniResolve, score = mini.score;
     miniResolve = null;
     $('mini').querySelector('.mini-title')!.textContent = `${grade(score)} · ${Math.round(score * 100)} pontos`;
     $('mini').querySelector('.mini-opts')!.replaceChildren();
     $<HTMLButtonElement>('mini-action').disabled = true;
-    setTimeout(() => { $('mini').hidden = true; mini = null; busy = false; r(score); }, 1300);
+    miniCancel.hidden = true;
+    setTimeout(() => { closeMini(); r(score); }, 1300);
   }
 }
 const seededRand = () => { const r = new Rng(c ? c.rng ^ Math.floor(clock * 1000) : 1); return () => r.next(); };
 
-async function trainSpot(kind: 'troncos' | 'alvos' | 'meditacao') {
+function soloTrainingSlots(cc: Campaign): number {
+  return cc.period === 1 ? cc.actions : cc.map === 'campo' ? extraTrainingLeft(cc) : 0;
+}
+
+async function prepareSoloTraining(camp: Campaign): Promise<boolean> {
+  if (camp.period === 0 && camp.rank === 'Genin' && academyMorning(camp) === 'free') {
+    await offerAfternoon(['O Campo está livre. Quer passar para a tarde para começar a treinar?']);
+    return soloTrainingSlots(camp) > 0;
+  }
+  if (soloTrainingSlots(camp) > 0) return true;
+  await say(null, [camp.period === 0 ? 'O Campo abre à tarde.' : 'Os treinos de hoje terminaram. Volte amanhã.']);
+  return false;
+}
+
+function trainingGame(kind: TrainingId, camp: Campaign): Minigame {
+  switch (kind) {
+    case 'troncos': return new StrikeGame(camp.stats.Força);
+    case 'alvos': return new KunaiGame(camp.stats.Percepção);
+    case 'meditacao': return new ChakraGame(camp.stats['Controle de chakra']);
+    case 'folego': return new ChakraGame(camp.stats.Vitalidade, true);
+    case 'arrancadas': case 'resistencia':
+      return new StrikeGame(camp.stats[kind === 'arrancadas' ? 'Velocidade' : 'Resistência'], TRAINING[kind].name,
+        'Avance quando o marcador cruzar a faixa dourada. São seis passagens.', 'track', kind === 'resistencia' ? 'bloqueio' : undefined);
+    case 'leitura': case 'ilusao': return new ObservationGame(kind === 'ilusao', seededRand());
+    case 'moldagem': {
+      const game = new SealsGame(5, seededRand(), 2.8);
+      game.title = TRAINING[kind].name;
+      return game;
+    }
+  }
+}
+
+function progressPercent(camp: Campaign, stat: Stat) {
+  return Math.min(99, Math.max(0, Math.floor((camp.statXp[stat] ?? 0) / statCost(camp.stats[stat]) * 100)));
+}
+
+async function chooseTraining(drills: TrainingId[]) {
   if (!c) return;
-  if (c.period !== 1) { await say(null, [c.period === 0 ? 'De manhã é dia de aula. O campo fica para a tarde.' : 'Está escuro demais para treinar com segurança. Melhor descansar.']); return; }
-  const cost = { troncos: 6, alvos: 4, meditacao: 2 }[kind];
-  if (c.stamina < cost) { await say(null, ['Você está exausto. Coma algo, jante no Ichiraku ou descanse antes de treinar de novo.']); return; }
-  const stats = { troncos: ['Taijutsu', 'Força'], alvos: ['Bukijutsu', 'Percepção'], meditacao: ['Controle de chakra', 'Chakra'] }[kind] as Stat[];
-  const mg = kind === 'troncos' ? new StrikeGame(c.stats.Força) : kind === 'alvos' ? new KunaiGame(c.stats.Percepção) : new ChakraGame(c.stats['Controle de chakra']);
-  const score = await runMini(mg);
-  c.stamina -= cost;
-  if (kind === 'meditacao') c.chakra = Math.min(maxVitals(c.stats).chakra, c.chakra + 8);
-  const res = applyTraining(c, stats, score);
-  clampVitals(c);
-  const gains = res.gains.map((g2) => `${g2.stat} +${g2.points}`).join(', ');
-  addLog(c, `Treino nos ${mg.title.toLowerCase()}: ${Math.round(score * 100)} pontos.${gains ? ' ' + gains + '.' : ''}`);
-  if (gains) toast(`Evolução: ${gains}`);
-  afterAction();
+  const camp = c;
+  if (!await prepareSoloTraining(camp)) return;
+  const choice = await say(null, ['Cada exercício custa uma ação. Escolha pelo atributo que quer desenvolver.'], [
+    ...drills.map((id) => ({ id, label: `${TRAINING[id].name} · ${TRAINING[id].stats.join(' e ')} · ${TRAINING[id].cost} RES` })),
+    { id: '', label: 'Agora não' },
+  ]);
+  const drill = drills.find((id) => id === choice);
+  if (drill && c === camp) await trainSpot(drill, true);
+}
+
+async function trainSpot(kind: TrainingId, confirmed = false) {
+  if (!c) return;
+  const camp = c;
+  if (!await prepareSoloTraining(camp)) return;
+  const { name, stats, cost } = TRAINING[kind];
+  if (camp.stamina < cost) { await say(null, ['Você está sem fôlego. Coma um onigiri, jante no Ichiraku ou descanse.']); return; }
+  if (!confirmed && camp.period === 2) {
+    const choice = await say(null, [`${name} · ${cost} RES · 1 treino extra`], [{ id: 'sim', label: 'Começar treino extra' }, { id: 'nao', label: 'Agora não' }]);
+    if (choice !== 'sim') return;
+  }
+  const score = await runMini(trainingGame(kind, camp), true);
+  if (score === null) return;
+  camp.stamina -= cost;
+  if (kind === 'meditacao') camp.chakra = Math.min(maxVitals(camp.stats).chakra, camp.chakra + 8);
+  const result = applyTraining(camp, stats, score);
+  clampVitals(camp);
+  const progress = stats.map((stat) => {
+    const points = result.gains.find((gain) => gain.stat === stat)?.points;
+    return points ? `${stat} +${points}` : `${stat} ${progressPercent(camp, stat)}%`;
+  }).join(' · ');
+  addLog(camp, `${name} (${Math.round(score * 100)} pontos). ${progress}.`);
+  afterAction(true);
+  toast(progress);
+}
+
+function yukiHint(camp: Campaign): string {
+  const trial = yukiTrial(camp);
+  if (trial.state === 'story') return 'O caderno da família pode ser estudado na Pedra de meditação depois de concluir a Vida Genin.';
+  if (trial.state === 'stats') return `Para estudar o caderno, melhore ${trial.missing.join(' e ')}.`;
+  if (trial.state === 'ready') return 'O caderno pode ser estudado na Pedra de meditação do Campo de Treino.';
+  return '';
+}
+
+async function meditationSpot() {
+  if (!c) return;
+  const camp = c;
+  const trial = yukiTrial(camp);
+  if (trial.state === 'other' || trial.state === 'known') { await trainSpot('meditacao'); return; }
+  if (!await prepareSoloTraining(camp)) return;
+  const choice = await say(null, ['A margem do lago está quieta.'], [
+    { id: 'meditar', label: 'Meditar · Controle de chakra e Chakra' },
+    { id: 'yuki', label: 'Abrir o caderno da família Yuki' },
+    { id: '', label: 'Agora não' },
+  ]);
+  if (choice === 'meditar') { await trainSpot('meditacao', true); return; }
+  if (choice !== 'yuki') return;
+  if (trial.state !== 'ready') { await say(null, [yukiHint(camp)]); return; }
+  if (camp.chakra < HYOTON_TRIAL_COST) { await say(null, ['Você precisa de 6 CH. Medite primeiro para recuperar chakra.']); return; }
+  const begin = await say(null, [
+    'Entre duas páginas, um parente desenhou as mãos acima de uma tigela. Uma nota pede que você segure o chakra até a água cristalizar.',
+    `Faça os selos e acerte ${Math.round(HYOTON_TRIAL_SCORE * 100)}% da prova. Uma tentativa custa ${HYOTON_TRIAL_COST} CH e uma ação.`,
+  ], [{ id: 'sim', label: 'Tentar formar gelo' }, { id: '', label: 'Guardar o caderno' }]);
+  if (begin !== 'sim') return;
+  const score = await runMini(new JutsuPracticeGame(JUTSUS[HYOTON], playerActor(), seededRand(), HYOTON_TRIAL_SCORE), true);
+  if (score === null) return;
+  camp.chakra -= HYOTON_TRIAL_COST;
+  const learned = awakenHyoton(camp, score);
+  afterAction(true);
+  save();
+  const lines = learned ? ['A água cristalizou entre seus dedos. Você aprendeu Hyōton: Estilhaços de Gelo.',
+    'Pratique no posto de jutsus ou use em duelo a média ou longa distância.'] :
+    ['A água esfriou, mas o gelo se desfez. Tente novamente quando tiver chakra e uma ação.'];
+  await say(null, lines);
+}
+
+function campaignJutsus(camp: Campaign) {
+  return Object.values(JUTSUS).filter((j) => Object.hasOwn(camp.jutsus, j.id)
+    && (j.era === 'academia' || camp.era === j.era) && (!j.clan || j.clan === camp.profile.clan));
 }
 
 async function practiceSpot() {
   if (!c) return;
-  const known = Object.keys(c.jutsus).filter((j) => JUTSUS[j]?.era === 'academia' || (c!.era === 'classico' && JUTSUS[j]?.era === 'classico'));
-  if (!known.length) { await say(null, ['Você ainda não aprendeu nenhuma técnica. As aulas de Iruka ensinam Henge, Kawarimi e Bunshin.']); return; }
-  if (c.period !== 1) { await say(null, ['Melhor praticar à tarde, com o campo livre.']); return; }
-  const ch = await say(null, ['Qual técnica praticar? Cada sessão gasta chakra e uma ação.'], [...known.map((j) => ({ id: j, label: `${JUTSUS[j].name} · domínio ${Math.round(c!.jutsus[j])}%` })), { id: '', label: 'Cancelar' }]);
-  const j = JUTSUS[ch];
-  if (!j) return;
-  const cost = Math.min(j.chakraCost * 2, maxVitals(c.stats).chakra);
-  if (c.chakra < cost) { await say(null, ['Chakra baixo demais. Medite na pedra ou descanse antes.']); return; }
-  const score = await runMini(new SealsGame(4, seededRand(), 2.6));
-  c.chakra -= cost;
-  const res = applyTraining(c, j.trains, score, 0.2, j.id);
-  addLog(c, `Praticou ${j.name}: domínio ${Math.round(c.jutsus[j.id])}%.`);
-  toast(`${j.name}: domínio ${Math.round(c.jutsus[j.id])}% (+${(res.mastery?.delta ?? 0).toFixed(1)})`);
-  afterAction();
+  const camp = c;
+  const known = campaignJutsus(camp);
+  if (!known.length) { await say(null, ['As aulas de Iruka ensinam Henge, Kawarimi e Bunshin. Aprenda uma técnica para praticar aqui.']); return; }
+  if (!await prepareSoloTraining(camp)) return;
+  const decimal = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 1 });
+  const canPractice = (j: Jutsu) => camp.chakra >= j.chakraCost && camp.jutsus[j.id] < 100;
+  let selected: Jutsu | undefined;
+  while (soloTrainingSlots(camp)) {
+    if (!selected) {
+      const remaining = camp.period === 1 ? `${camp.actions} na tarde` : `${extraTrainingLeft(camp)} de treino extra`;
+      const choice = await say(null, [`Escolha o jutsu. Cada sessão custa 1 ação (${remaining}) e o chakra indicado.`], [
+        ...known.map((j) => ({ id: j.id, label: `${j.name} · ${decimal.format(camp.jutsus[j.id])}% · ${j.chakraCost} CH` })),
+        { id: '', label: 'Encerrar treino' },
+      ]);
+      selected = known.find((j) => j.id === choice);
+      if (!selected) return;
+    }
+    if (!canPractice(selected)) {
+      await say(null, [camp.jutsus[selected.id] >= 100 ? 'Você já atingiu o domínio máximo desse jutsu.' : 'Chakra insuficiente. A pedra de meditação fica ao sul do campo.']);
+      selected = undefined;
+      if (!known.some(canPractice)) return;
+      continue;
+    }
+    const j = selected;
+    const before = camp.jutsus[j.id];
+    const score = await runMini(new JutsuPracticeGame(j, playerActor(), seededRand()), true);
+    if (score === null) return;
+    camp.chakra -= j.chakraCost;
+    applyTraining(camp, j.trains, score, 0.2, j.id);
+    const mastery = camp.jutsus[j.id];
+    addLog(camp, `Praticou ${j.name}: domínio ${decimal.format(mastery)}%.`);
+    afterAction(true);
+    save();
+    refresh();
+    const summary = `${j.name} · domínio ${decimal.format(mastery)}% (+${decimal.format(mastery - before)})`;
+    const actions = soloTrainingSlots(camp) && known.some(canPractice) ? [
+      ...(canPractice(j) ? [{ id: 'repetir', label: `Repetir (${j.chakraCost} CH, 1 ${camp.period === 2 ? 'treino extra' : 'ação'})` }] : []),
+      { id: 'outra', label: 'Escolher técnica' }, { id: '', label: 'Encerrar treino' },
+    ] : [{ id: '', label: 'Encerrar treino' }];
+    const choice = await say(null, [summary], actions);
+    if (choice === 'outra') selected = undefined;
+    else if (choice !== 'repetir') return;
+  }
 }
 
 // ——— Combate ———
@@ -1107,7 +1387,7 @@ let battleScene: BattleScene | null = null;
 const POWER = { facil: 0.8, normal: 1, dificil: 1.2 } as const;
 
 function playerFighter() {
-  const known = Object.fromEntries(Object.entries(c!.jutsus).filter(([j]) => JUTSUS[j]?.era === 'academia' || (c!.era === 'classico' && JUTSUS[j]?.era === 'classico')));
+  const known = Object.fromEntries(campaignJutsus(c!).map((j) => [j.id, c!.jutsus[j.id]]));
   return makeFighter({
     id: 'player', name: c!.profile.name, role: 'player', look: { ...c!.profile }, stats: combatStats(c!), jutsus: known,
     damageReduction: equippedGear(c!) === 'colete' ? GEAR.colete.reduction : 0,
@@ -1119,7 +1399,8 @@ function npcFighter(id: string) {
   const techniques = { ...n.jutsus };
   if (c!.era === 'classico' && id === 'sasuke') techniques.gokakyu = 70;
   if (c!.era === 'classico' && id === 'naruto' && c!.flags['naruto-kage-bunshin']) techniques['kage-bunshin'] = 85;
-  return makeFighter({ id, name: d.name, role: d.role, look: d.look, stats: n.stats, jutsus: techniques, personality: d.personality, power: POWER[c!.settings.difficulty] }, 1);
+  return makeFighter({ id, name: d.name, role: d.role, look: d.look, stats: n.stats, jutsus: techniques,
+    items: id === 'rock-lee' ? { kunai: 0, shuriken: 0 } : undefined, personality: d.personality, power: POWER[c!.settings.difficulty] }, 1);
 }
 
 async function runBattle(id: string, title: string, patrol?: { tactic?: Tactic }) {
@@ -1132,7 +1413,7 @@ async function runBattle(id: string, title: string, patrol?: { tactic?: Tactic }
   const battle = startBattle(playerFighter(), opponent, seed, distance);
   const m = map(), focus = { x: c.x, y: c.y };
   const scene = new BattleScene({
-    battle, title, actors: [playerActor(), actorFor(id)],
+    battle, title, training: !patrol, actors: [playerActor(), actorFor(id)],
     background: (bg, w, h) => paintWorld(bg, m, { x: Math.max(0, Math.min(m.w - w, focus.x - w / 2)), y: Math.max(0, Math.min(m.h - h, focus.y - h * 0.7)) }, w, h, [], c!.period),
   }, $('battle'));
   battleScene = scene;
@@ -1147,6 +1428,8 @@ async function runBattle(id: string, title: string, patrol?: { tactic?: Tactic }
   // Treino não fere de verdade: sobra ao menos um terço da vida.
   c.hp = Math.max(Math.round(maxVitals(c.stats).hp / 3), me.hp); c.chakra = me.chakra; c.stamina = me.stamina;
   if (patrol) {
+    c.inventory.kunai = me.items.kunai;
+    c.inventory.shuriken = me.items.shuriken;
     refresh();
     return won;
   }
@@ -1177,6 +1460,9 @@ const SPAR_LINES: Record<string, [string, string, string]> = {
   choji: ['Vou segurar o primeiro golpe. Quero ver o que você faz depois.', 'Achei que aguentava mais uma. Preciso aprender a recuar.', 'Firmei os pés. Aí sobrou espaço para responder.'],
   kiba: ['Corra enquanto pode! Eu e o Akamaru treinamos arrancada desde cedo.', 'Você me viu vindo de longe, né? Preciso variar meu bote.', 'Fechei a distância antes de você armar a guarda.'],
   hinata: ['Eu vou esperar sua entrada. Posso treinar minha resposta?', 'Eu hesitei no começo. Obrigada pelo treino.', 'Esperei o momento certo e consegui. Obrigada.'],
+  'rock-lee': ['Vamos ver quantos golpes conseguimos trocar sem dar um passo para trás!', 'Você me tirou do eixo. Vou treinar a perna de apoio!', 'A troca de pé funcionou. Quero repetir esse golpe amanhã!'],
+  neji: ['Aproxime-se quando estiver pronto. Vou prestar atenção a cada passo.', 'Você mudou o momento do golpe. Foi uma boa leitura.', 'Seu ombro virou antes da mão. É ali que você entregou a entrada.'],
+  tenten: ['Vou começar pelos arremessos. Tente cruzar o campo enquanto eu troco de mão.', 'Você quebrou minha mira mudando a distância. Vou treinar isso.', 'No meio do campo, você deu tempo para eu mirar de novo.'],
   shino: ['Vou testar o alcance. Se chegar perto, tente impedir minha saída.', 'Você cortou a rota de recuo. Isso decidiu a luta.', 'Mantive o espaço. Foi o suficiente.'],
 };
 
@@ -1199,9 +1485,14 @@ async function academyDoor() {
   if (c.period !== 0) { await say(null, ['As salas estão vazias a esta hora. A aula é de manhã.']); return; }
   if (c.lessonsDone.includes(c.day)) { await say(null, ['A aula de hoje já terminou.']); return; }
   if (c.rank === 'Genin') { await say(null, ['Você já se formou. A Academia agora é passado, e as missões são o futuro.']); return; }
-  if (c.day >= EXAM_DAY) { await runExam(); return; }
+  const session = academyMorning(c);
+  if (session === 'exam') { await runExam(); return; }
   const lesson = todayLesson(c);
-  if (!lesson) { await say(null, ['Hoje não há aula. Aproveite para treinar.']); return; }
+  if (session === 'free' || !lesson) {
+    await offerAfternoon(retakeDay(c) !== null ? [`Sua repescagem é no dia ${retakeDay(c)}. Hoje o Campo de Treino está livre.`] :
+      ['Hoje o Campo de Treino está livre.']);
+    return;
+  }
   await runLesson(lesson);
 }
 
@@ -1256,8 +1547,12 @@ async function runLesson(lesson: typeof LESSONS[number], makeup = false) {
 // ——— Exame de graduação ———
 async function runExam() {
   if (!c) return;
-  const retake = c.flags['exame:player'] === 'reprovado';
-  if (retake && c.day < (c.flags['repescagem'] as number)) { await say(null, [`A repescagem é no dia ${c.flags['repescagem']}. Até lá, treine o Bunshin.`]); return; }
+  const retryDate = retakeDay(c);
+  const retake = retryDate !== null;
+  if (retryDate !== null && c.day < retryDate) {
+    await offerAfternoon([`Sua repescagem é no dia ${retryDate}. Hoje o Campo de Treino está livre.`]);
+    return;
+  }
   lessonMode = true;
   enterMap('sala', 240, 172, 'up');
   await new Promise((r) => setTimeout(r, 650));
@@ -1282,7 +1577,7 @@ async function runExam() {
       mastery >= 60 ? 'Três clones firmes do primeiro ao último. Excelente.' : 'Os clones ficaram de pé. Vamos à nota.',
       report,
       `Parabéns, ${c.profile.name}. Você está aprovado.`,
-      'Aqui está a sua bandana. Use com orgulho: a partir de hoje você é um ninja da Folha.',
+      'Aqui está a sua bandana. A partir de hoje você é um ninja da Folha. Na aba Ficha, você pode escolher onde usá-la.',
     ]);
     const passed = CLASSMATES.filter((id) => String(c!.flags[`exame:${id}`] ?? '').startsWith('aprovado')).map((id) => CHARACTERS[id].name);
     const failed = CLASSMATES.filter((id) => c!.flags[`exame:${id}`] === 'reprovado').map((id) => CHARACTERS[id].name);
@@ -1318,11 +1613,29 @@ async function ramen() {
   else await say(teuchi, ['Aqui está! Caldo quente para quem treinou o dia todo.']);
 }
 
+function advanceToAfternoon() {
+  if (!c || c.period !== 0 || academyMorning(c) !== 'free') return false;
+  startAfternoon(c);
+  placeNpcs();
+  save();
+  refresh();
+  return true;
+}
+
+async function offerAfternoon(lines: string[]) {
+  if (!c || c.period !== 0 || academyMorning(c) !== 'free') return;
+  const choice = await say(null, lines, [
+    { id: 'sim', label: 'Começar a tarde de treino' }, { id: 'nao', label: 'Continuar a manhã' },
+  ]);
+  if (choice === 'sim') advanceToAfternoon();
+}
+
 async function home() {
   if (!c) return;
-  if (geninStage(c) && c.period === 0) {
-    const ch = await say(null, ['Encerrar a manhã e seguir para a tarde?'], [{ id: 'sim', label: 'Descansar até a tarde' }, { id: 'nao', label: 'Continuar a manhã' }]);
-    if (ch === 'sim') { startAfternoon(c); placeNpcs(); }
+  if (c.period === 0 && academyMorning(c) === 'free') {
+    const retryDate = retakeDay(c);
+    await offerAfternoon(retryDate !== null ? [`A repescagem é no dia ${retryDate}. Quer seguir para a tarde de treino?`] :
+      ['Quer seguir para a tarde de treino?']);
     return;
   }
   if (c.period === 0) { await say(null, [c.lessonsDone.includes(c.day) || c.day === 1 ? 'Ainda é cedo para voltar para casa.' : 'A aula começa logo. Melhor ir para a Academia.']); return; }
@@ -1429,7 +1742,7 @@ function update(dt: number) {
 }
 
 // ——— Desenho ———
-function paintWorld(gg: CanvasRenderingContext2D, m: GameMap, cam: { x: number; y: number }, w: number, h: number, actors: { y: number; draw: () => void }[], period: Period) {
+function paintWorld(gg: CanvasRenderingContext2D, m: GameMap, cam: { x: number; y: number }, w: number, h: number, actors: { y: number; draw: () => void }[], period: Period, ambient = true) {
   gg.setTransform(1, 0, 0, 1, 0, 0);
   gg.fillStyle = '#1c292a'; gg.fillRect(0, 0, w, h);
   const ox = Math.round(cam.x), oy = Math.round(cam.y);
@@ -1441,7 +1754,7 @@ function paintWorld(gg: CanvasRenderingContext2D, m: GameMap, cam: { x: number; 
   for (const e of m.extra ?? []) if (e.img.complete && e.img.naturalWidth) list.push({ y: e.depth, draw: () => gg.drawImage(e.img, e.x, e.y) });
   list.push(...actors);
   list.sort((a, b) => a.y - b.y).forEach((a) => a.draw());
-  m.ambient?.(gg, calm.matches ? 0 : clock, calm.matches);
+  if (ambient) m.ambient?.(gg, calm.matches ? 0 : clock, calm.matches);
   if (!m.interior && period > 0) {
     gg.setTransform(1, 0, 0, 1, 0, 0);
     gg.fillStyle = period === 1 ? 'rgba(255,170,80,.10)' : 'rgba(18,28,70,.48)';
@@ -1466,7 +1779,6 @@ function paint() {
   const m = map();
   const actors = npcs.map((n) => ({ y: n.y, draw: () => drawActor(g, n.x, n.y, n.actor, n.dir, n.frame < 0 ? idlePose(clock, n.x * 0.017, calm.matches) : n.frame) }));
   for (const spot of missionSpots()) actors.push({ y: spot.y, draw: () => drawMissionSpot(spot) });
-  if (m.id === 'rua' && geninStage(c) === 'ondas') actors.push({ y: 212, draw: () => drawActor(g, 649, 212, TAZUNA, 'down', -1) });
   const me: Actor = { role: 'player', look: { ...c.profile }, bandana: c.rank !== 'Estudante da Academia' };
   actors.push({ y: c.y, draw: () => drawActor(g, c!.x, c!.y, me, c!.dir, walkFrame < 0 ? idlePose(clock, 0, calm.matches) : walkFrame, clock < gestureUntil) });
   paintWorld(g, m, camera, cv.width, cv.height, actors, c.period);
@@ -1483,12 +1795,11 @@ function paint() {
 // ——— Seta de objetivo ———
 const EXIT_TO: Partial<Record<MapId, { x: number; y: number }>> = { campo: { x: 622, y: 240 }, sala: { x: 240, y: 262 } };
 
-/** Onde o objetivo atual está, no mapa atual (ou a saída que leva até ele). */
-function questTarget(hideNearby = true): { x: number; y: number; lift: number } | null {
-  if (!c) return null;
-  let goal: { map: MapId; x: number; y: number; lift: number } | null = null;
-  const lessonPending = c.period === 0 && c.rank !== 'Genin' && !c.lessonsDone.includes(c.day)
-    && (!!todayLesson(c) || c.day >= EXAM_DAY) && !(c.flags['exame:player'] === 'reprovado' && c.day < Number(c.flags.repescagem));
+function questLocation(): MapGoal | null {
+  if (!c || missionDeferred(c)) return null;
+  let goal: MapGoal | null = null;
+  const session = academyMorning(c);
+  const lessonPending = c.period === 0 && (session === 'lesson' || session === 'exam');
   const stage = geninStage(c);
   if (stage === 'suprimentos') {
     const spot = SUPPLIES.find(({ id }) => !c!.flags[id]);
@@ -1498,7 +1809,7 @@ function questTarget(hideNearby = true): { x: number; y: number; lift: number } 
     }
   } else if (stage === 'busca') {
     if (c.flags['tora-rastro']) goal = { map: 'campo', ...toraSpot(c), lift: 15 };
-    else if (c.map !== 'campo') goal = { map: 'campo', x: 0, y: 0, lift: 0 };
+    else goal = { map: 'campo', x: 318, y: 266, lift: 0, regional: true };
   }
   else if (stage === 'selo-pistas' && sealClueCount(c) < SEAL_CLUES.length) {
     const clue = SEAL_CLUES.find(({ id }) => !c!.flags[id])!;
@@ -1506,6 +1817,8 @@ function questTarget(hideNearby = true): { x: number; y: number; lift: number } 
   } else if (stage === 'patrulha-rota') {
     const spot = nextPatrolPost(c);
     goal = spot ? { map: 'campo', x: spot.x, y: spot.y, lift: 22 } : { map: 'campo', ...MAKI_SPOT, lift: 45 };
+  } else if (stage === 'ondas') {
+    goal = { map: 'rua', ...TAZUNA_SPOT, lift: 50 };
   } else if (stage) {
     const spot = mentorLocation(stage);
     if (spot) goal = { ...spot, lift: 53 };
@@ -1514,15 +1827,24 @@ function questTarget(hideNearby = true): { x: number; y: number; lift: number } 
     const ir = npcs.find((n) => n.id === 'iruka');
     goal = { map: 'rua', x: ir?.x ?? 458, y: ir?.y ?? 222, lift: 56 };
   } else if (lessonPending) goal = { map: 'rua', x: 450, y: 190, lift: 22 };
+  else if (c.period === 2 && extraTrainingLeft(c) && c.map === 'campo') goal = { map: 'campo', x: 300, y: 196, lift: 32 };
   else if (c.period === 2) goal = { map: 'rua', x: 117, y: 434, lift: 30 };
-  else if (c.period === 1 && c.map === 'rua') goal = { map: 'campo', x: 0, y: 0, lift: 0 };
+  else if (c.period === 1 || (c.period === 0 && session === 'free' && retakeDay(c) !== null)) goal = { map: 'campo', x: 318, y: 266, lift: 0, regional: true };
+  return goal;
+}
+
+/** A seta leva à passagem quando o objetivo fica em outra área. */
+function questTarget(): { x: number; y: number; lift: number } | null {
+  if (!c) return null;
+  const goal = questLocation();
   if (!goal) return null;
+  if (goal.regional && (c.map === goal.map || (geninStage(c) !== 'busca' && c.map !== 'rua'))) return null;
   if (goal.map !== c.map) {
     if (c.map === 'rua' && goal.map === 'campo') return { x: 22, y: 248, lift: 18 };
     const ex = EXIT_TO[c.map];
     return ex ? { x: ex.x, y: ex.y, lift: 18 } : null;
   }
-  if (hideNearby && Math.hypot(c.x - goal.x, c.y - goal.y) < 30) return null;
+  if (Math.hypot(c.x - goal.x, c.y - goal.y) < 30) return null;
   return goal;
 }
 
@@ -1581,36 +1903,112 @@ function openMenu() {
   held.clear();
   $('menuName').textContent = c.profile.name;
   $('menuSub').textContent = `${c.rank} · Dia ${c.day} · ${PERIODS[c.period]} · ${c.ryo} ryō`;
-  const mf = $<HTMLCanvasElement>('menuFace').getContext('2d')!; mf.imageSmoothingEnabled = false; mf.drawImage(portrait(playerActor()), 0, 0);
+  refreshMenuPortrait();
   renderMenu();
   $<HTMLDialogElement>('menu').showModal();
 }
+function refreshMenuPortrait() {
+  const g = $<HTMLCanvasElement>('menuFace').getContext('2d')!;
+  g.imageSmoothingEnabled = false;
+  g.drawImage(portrait(playerActor()), 0, 0);
+}
+
+function bandanaPicker(camp: Campaign) {
+  const card = el('section', 'bandana-picker');
+  const controls = el('div', 'bandana-controls');
+  const label = document.createElement('label');
+  label.htmlFor = 'bandana-position';
+  label.textContent = 'Posição da bandana';
+  const picker = document.createElement('select');
+  picker.id = label.htmlFor;
+  for (const [position, name] of Object.entries(BAND_POSITIONS)) picker.add(new Option(name, position));
+  picker.value = bandPositionOf(camp.profile);
+  controls.append(label, picker);
+  const preview = document.createElement('canvas');
+  preview.width = 160;
+  preview.height = 94;
+  preview.setAttribute('role', 'img');
+  preview.setAttribute('aria-label', 'Prévia do personagem de frente e de perfil');
+  const g = preview.getContext('2d')!;
+  g.scale(2, 2);
+  g.imageSmoothingEnabled = false;
+  const redraw = () => {
+    g.clearRect(0, 0, 80, 47);
+    const actor = playerActor();
+    drawActor(g, 20, 44, actor, 'down', -1);
+    drawActor(g, 60, 44, actor, 'right', -1);
+  };
+  picker.onchange = () => {
+    const previous = bandPositionOf(camp.profile);
+    const next = bandPositionOf({ bandPosition: picker.value });
+    if (next === previous || c !== camp) return;
+    camp.profile.bandPosition = next;
+    if (!save()) {
+      camp.profile.bandPosition = previous;
+      picker.value = previous;
+    }
+    refresh();
+    refreshMenuPortrait();
+    redraw();
+  };
+  redraw();
+  card.append(controls, preview);
+  return card;
+}
+
+function gearBenefit(gear: (typeof GEAR)[GearId]) {
+  return 'stat' in gear ? `+${gear.bonus} ${gear.stat}` : `−${Math.round(gear.reduction * 100)}% de dano recebido`;
+}
+
 function renderMenu() {
   if (!c) return;
   const tabs = $('tabs');
-  tabs.replaceChildren(...TABS.map(([id, label]) => { const b = el('button', '', label); b.setAttribute('aria-selected', String(id === tab)); b.onclick = () => { tab = id; renderMenu(); }; return b; }));
+  tabs.replaceChildren(...TABS.map(([id, label]) => { const b = el('button', '', label); b.setAttribute('aria-selected', String(id === tab)); b.onclick = () => { tab = id; renderMenu(); if (id === 'mapa') tabs.querySelector<HTMLButtonElement>('[aria-selected=true]')?.focus(); }; return b; }));
   const body = $('tabBody');
   body.replaceChildren();
-  const mastery = Object.values(c.jutsus).reduce((a, b) => a + b, 0);
   if (tab === 'ficha') {
+    const mastery = Object.values(c.jutsus).reduce((a, b) => a + b, 0);
+    const effective = combatStats(c);
+    const power = combatPower(effective, mastery);
+    const bonus = power - combatPower(c.stats, mastery);
     body.append(el('p', 'muted', origin(c.profile)));
     const g2 = el('div', 'grid2');
-    g2.append(row('Patente', c.rank), row('Nível', String(level(c))), row('Poder de combate', String(combatPower(c.stats, mastery))), row('Reputação', String(c.reputation)),
+    g2.append(row('Patente', c.rank), row('Nível', String(level(c))), row('Poder de combate', bonus ? `${power} (+${bonus})` : String(power)), row('Reputação', String(c.reputation)),
       row('Clã', c.profile.clan), row('Afinidade', c.profile.element), row('Aldeia natal', c.profile.village), row('Idade', `${c.age} anos`));
-    body.append(g2, el('h3', '', 'Atributos'));
+    body.append(g2);
+    const gearId = equippedGear(c);
+    if (gearId) {
+      const gear = GEAR[gearId];
+      body.append(row(gear.name, gearBenefit(gear)));
+    }
+    if (c.rank !== 'Estudante da Academia') body.append(bandanaPicker(c));
+    body.append(el('h3', '', 'Atributos'));
     const g3 = el('div', 'grid2');
-    for (const s of ACADEMY_STATS) { const d = el('div'); d.append(row(s, String(c.stats[s])), bar((c.statXp[s] / statCost(c.stats[s])) * 100)); g3.append(d); }
+    for (const s of ACADEMY_STATS) {
+      const d = el('div');
+      const drill = trainingFor(s);
+      const bonus = effective[s] - c.stats[s];
+      d.append(row(s, bonus ? `${effective[s]} (+${bonus})` : String(effective[s])), bar(progressPercent(c, s)));
+      if (drill) d.append(el('small', 'stat-training', drill.station));
+      g3.append(d);
+    }
     body.append(g3);
   } else if (tab === 'tecnicas') {
-    const known = Object.keys(c.jutsus);
+    const heritage = yukiHint(c);
+    if (heritage) {
+      const card = el('div', 'card');
+      card.append(row('Herança Yuki', 'Hyōton'), el('p', 'muted', heritage));
+      body.append(card);
+    }
+    const known = campaignJutsus(c);
     if (!known.length) body.append(el('p', '', 'Nenhuma técnica aprendida ainda. As aulas de Iruka ensinam Henge, Kawarimi e Bunshin.'));
-    for (const id of known) {
-      const j = JUTSUS[id]; const card = el('div', 'card');
-      card.append(row(`${j.name} · rank ${j.rank}`, `${Math.round(c.jutsus[id])}%`), bar(c.jutsus[id]), el('p', 'muted', `${j.meaning}. ${j.description} Custo: ${j.chakraCost} de chakra.`));
+    for (const j of known) {
+      const card = el('div', 'card');
+      card.append(row(`${j.name} · rank ${j.rank}`, `${Math.round(c.jutsus[j.id])}%`), bar(c.jutsus[j.id]), el('p', 'muted', `${j.meaning}. ${j.description} Usa ${j.chakraCost} de chakra.`));
       body.append(card);
     }
   } else if (tab === 'relacoes') {
-    for (const id of ['iruka', ...CLASSMATES, ...(geninStage(c) ? [senseiId(c)] : [])]) {
+    for (const id of ['iruka', ...CLASSMATES, ...GUY_TEAM, ...new Set(['guy', ...(geninStage(c) ? [senseiId(c)] : [])])]) {
       const n = c.npcs[id], d = CHARACTERS[id], card = el('div', 'card');
       card.append(row(d.name + (d.original ? ' (original)' : ''), bondLabel(n.bond)),
         el('p', 'muted', `Amizade ${n.bond.amizade} · Rivalidade ${n.bond.rivalidade} · Respeito ${n.bond.respeito} · Confiança ${n.bond.confianca}`));
@@ -1619,19 +2017,31 @@ function renderMenu() {
     }
   } else if (tab === 'diario') {
     const stage = geninStage(c);
+    const preferred = guyPreference(c);
+    if (preferred && !stage) body.append(row('Preferência de equipe', `Time Guy · ${CHARACTERS[preferred].name}`));
     if (stage) {
       body.append(row('Sensei', CHARACTERS[senseiId(c)].name),
         row('Equipe', [c.profile.name, ...teamMembers(c).map((id) => CHARACTERS[id].name)].join(' · ')),
         el('p', '', objective(c)));
     }
+    const offer = pendingMission(c);
+    if (offer) body.append(row(MISSION_OFFERS[offer].name, missionDeferred(c) ? 'Adiada' : 'Disponível'));
     const ol = el('ol', 'log');
     for (const l of c.log.slice(0, 60)) ol.append(el('li', '', `Dia ${l.day} · ${l.text}`));
     body.append(ol);
   } else if (tab === 'calendario') {
-    body.append(row('Hoje', `Dia ${c.day} · ${WEEKDAYS[(c.day - 1) % 7]} · ${PERIODS[c.period]}`), el('h3', '', 'Aulas da Academia'));
+    body.append(row('Hoje', `Dia ${c.day} · ${WEEKDAYS[(c.day - 1) % 7]} · ${PERIODS[c.period]}`));
+    if (c.rank === 'Genin' && c.period === 0) {
+      const afternoon = el('button', 'ghost', 'Avançar para a tarde') as HTMLButtonElement;
+      afternoon.onclick = () => { if (advanceToAfternoon()) $<HTMLDialogElement>('menu').close(); };
+      const actions = el('div', 'agenda-actions');
+      actions.append(afternoon);
+      body.append(actions);
+    }
+    body.append(el('h3', '', 'Aulas da Academia'));
     for (const l of LESSONS) body.append(row(`Dia ${l.day} · ${l.title}`, c.lessonsDone.includes(l.day) ? 'feita' : l.day < c.day ? 'perdida' : 'a fazer'));
     const ex = c.flags['exame:player'];
-    body.append(row(`Dia ${EXAM_DAY} · Exame de graduação`, ex === 'aprovado' ? 'aprovado' : ex === 'reprovado' ? `repescagem no dia ${c.flags.repescagem}` : 'a fazer'));
+    body.append(row(`Dia ${EXAM_DAY} · Exame de graduação`, ex === 'aprovado' ? 'aprovado' : ex === 'reprovado' ? `repescagem no dia ${retakeDay(c)}` : 'a fazer'));
   } else if (tab === 'itens') {
     body.append(row('Ryō', String(c.ryo)));
     if (Object.keys(GEAR).some((id) => c!.inventory[id])) body.append(el('h3', '', 'Equipamento ativo'));
@@ -1647,8 +2057,7 @@ function renderMenu() {
         save();
         renderMenu();
       };
-      const benefit = 'stat' in gear ? `+${gear.bonus} ${gear.stat}` : `−${Math.round(gear.reduction * 100)}% de dano recebido`;
-      card.append(row(gear.name, benefit), button);
+      card.append(row(gear.name, gearBenefit(gear)), button);
       body.append(card);
     }
     for (const [id, n] of Object.entries(c.inventory)) if (n > 0 && !Object.hasOwn(GEAR, id)) body.append(row(ITEMS[id]?.name ?? id, `× ${n}`));
@@ -1658,31 +2067,10 @@ function renderMenu() {
       body.append(el('br'), b);
     }
   } else if (tab === 'mapa') {
-    const current = map();
-    const atlas = document.createElement('canvas');
-    atlas.width = 248;
-    atlas.height = Math.round(248 * current.h / current.w);
-    atlas.setAttribute('role', 'img');
-    atlas.setAttribute('aria-label', `Mapa local de ${current.name}`);
-    atlas.style.cssText = 'width:100%;max-width:496px;height:auto;image-rendering:pixelated';
-    const chart = atlas.getContext('2d')!;
-    chart.imageSmoothingEnabled = false;
-    chart.drawImage(current.ground, 0, 0, atlas.width, atlas.height);
-    const dot = (x: number, y: number, color: string) => {
-      const mx = x / current.w * atlas.width, my = y / current.h * atlas.height;
-      px(chart, mx - 3, my - 3, 7, 7, '#302820');
-      px(chart, mx - 2, my - 2, 5, 5, color);
-    };
-    for (const exit of current.exits) dot(exit.rect.x + exit.rect.w / 2, exit.rect.y + exit.rect.h / 2, '#9cddd6');
-    const target = questTarget(false);
-    if (target) dot(target.x, target.y, '#f0c27a');
-    if (c.map === 'campo' && geninStage(c) === 'busca' && !c.flags['tora-rastro']) {
-      for (const trail of TORA_TRAILS) dot(trail.x, trail.y, '#dca787');
-      body.append(el('p', 'muted', 'Rosa marca os rastros que você pode examinar.'));
-    }
-    dot(c.x, c.y, '#fff7dd');
-    body.append(el('h3', '', current.name), atlas, el('p', 'muted', 'Branco: você · Dourado: objetivo · Azul: saída'));
-    for (const other of Object.values(maps)) if (other.id !== current.id) body.append(row(other.name, other.region));
+    renderMapAtlas(body, {
+      maps, player: c, objective: objective(c), goal: questLocation(), missionSpots,
+      paint: (g, area) => paintWorld(g, area, { x: 0, y: 0 }, area.w, area.h, [], 0, false),
+    });
   } else if (tab === 'sistema') {
     const wrap = el('div', 'btnrow');
     const b1 = el('button', '', 'Salvar agora') as HTMLButtonElement; b1.onclick = () => save(true);
@@ -1690,7 +2078,9 @@ function renderMenu() {
     const b3 = el('button', '', 'Voltar às campanhas') as HTMLButtonElement; b3.onclick = () => { save(); $<HTMLDialogElement>('menu').close(); openSlots(); };
     const b4 = el('button', '', `Música: ${audio.music ? 'ligada' : 'desligada'}`) as HTMLButtonElement; b4.onclick = () => { audio.setMusic(!audio.music); renderMenu(); };
     const b5 = el('button', '', `Efeitos: ${audio.sfxOn ? 'ligados' : 'desligados'}`) as HTMLButtonElement; b5.onclick = () => { audio.setSfx(!audio.sfxOn); renderMenu(); };
-    wrap.append(b1, b4, b5, b2, b3);
+    const backup = el('button', '', 'Exportar save') as HTMLButtonElement;
+    backup.onclick = () => { if (c) exportSave(c, slot); };
+    wrap.append(b1, backup, b4, b5, b2, b3);
     body.append(wrap, el('p', 'muted', `Versão ${GAME_VERSION} · Dificuldade ${LABELS[c.settings.difficulty]} · ${LABELS[c.settings.fidelity]} · Tempo de jogo ${Math.round(c.playtime / 60)} min.`));
   }
 }
@@ -1745,8 +2135,9 @@ window.addEventListener('keydown', (e) => {
   if (screen === 'create') { createKeys(e); return; }
   if ($<HTMLDialogElement>('menu').open) return;
   if (mini) {
-    if ((k === 'e' || k === ' ' || k === 'enter') && !e.repeat) { e.preventDefault(); mini.press(true); }
-    else if (/^[1-4]$/.test(k) && mini.choose) { e.preventDefault(); mini.choose(Number(k) - 1); renderMiniOptions(); }
+    if (k === 'escape' && !miniCancel.hidden) { e.preventDefault(); miniCancel.click(); }
+    else if ((k === 'e' || k === ' ' || k === 'enter') && !e.repeat && !(e.target instanceof HTMLButtonElement && $('mini').contains(e.target))) { e.preventDefault(); mini.press(true); }
+    else if (/^[1-4]$/.test(k) && mini.choose && !e.repeat) { e.preventDefault(); mini.choose(Number(k) - 1); renderMiniOptions(); }
     return;
   }
   if (battleScene) {

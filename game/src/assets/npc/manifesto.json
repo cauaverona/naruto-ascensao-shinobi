@@ -1,0 +1,631 @@
+{
+  "size": {
+    "sheet": [
+      120,
+      46
+    ],
+    "cell": [
+      40,
+      46
+    ]
+  },
+  "anchor": [
+    20,
+    44
+  ],
+  "order": [
+    "frente",
+    "direita",
+    "costas"
+  ],
+  "alpha": "transparente",
+  "approved": true,
+  "retratos": {
+    "file": "../npc-portraits.png",
+    "size": [680, 40],
+    "cell": [40, 40],
+    "order": "Mesmo índice de frames, da esquerda para a direita",
+    "alpha": "binário",
+    "source": "ImageGen, com a direção visual dos retratos do jogo. Recorte e normalização na grade nativa.",
+    "license": "Arte gerada para este projeto de fã. Os personagens da franquia pertencem aos respectivos titulares."
+  },
+  "frames": [
+    {
+      "id": "ino",
+      "name": "Ino",
+      "group": "academia",
+      "height": 34,
+      "shapes": [
+        {
+          "x": 13,
+          "y": 10,
+          "w": 15,
+          "h": 34
+        },
+        {
+          "x": 12,
+          "y": 10,
+          "w": 16,
+          "h": 34
+        },
+        {
+          "x": 13,
+          "y": 10,
+          "w": 15,
+          "h": 34
+        }
+      ],
+      "palette": 34,
+      "poses": [
+        "Frente",
+        "Perfil",
+        "Costas"
+      ],
+      "file": "ino.png",
+      "status": "arte base integrada",
+      "source": "ImageGen, normalizado para a grade do jogo"
+    },
+    {
+      "id": "shikamaru",
+      "name": "Shikamaru",
+      "group": "academia",
+      "height": 34,
+      "shapes": [
+        {
+          "x": 14,
+          "y": 10,
+          "w": 13,
+          "h": 34
+        },
+        {
+          "x": 12,
+          "y": 10,
+          "w": 16,
+          "h": 34
+        },
+        {
+          "x": 14,
+          "y": 10,
+          "w": 13,
+          "h": 34
+        }
+      ],
+      "palette": 34,
+      "poses": [
+        "Frente",
+        "Perfil",
+        "Costas"
+      ],
+      "file": "shikamaru.png",
+      "status": "arte base integrada",
+      "source": "ImageGen, normalizado para a grade do jogo"
+    },
+    {
+      "id": "choji",
+      "name": "Chōji",
+      "group": "academia",
+      "height": 34,
+      "shapes": [
+        {
+          "x": 11,
+          "y": 10,
+          "w": 19,
+          "h": 34
+        },
+        {
+          "x": 12,
+          "y": 10,
+          "w": 16,
+          "h": 34
+        },
+        {
+          "x": 11,
+          "y": 10,
+          "w": 19,
+          "h": 34
+        }
+      ],
+      "palette": 34,
+      "poses": [
+        "Frente",
+        "Perfil",
+        "Costas"
+      ],
+      "file": "choji.png",
+      "status": "arte base integrada",
+      "source": "ImageGen, normalizado para a grade do jogo"
+    },
+    {
+      "id": "kiba",
+      "name": "Kiba",
+      "group": "academia",
+      "height": 34,
+      "shapes": [
+        {
+          "x": 12,
+          "y": 10,
+          "w": 16,
+          "h": 34
+        },
+        {
+          "x": 13,
+          "y": 10,
+          "w": 15,
+          "h": 34
+        },
+        {
+          "x": 12,
+          "y": 10,
+          "w": 16,
+          "h": 34
+        }
+      ],
+      "palette": 34,
+      "poses": [
+        "Frente",
+        "Perfil",
+        "Costas"
+      ],
+      "file": "kiba.png",
+      "status": "arte base integrada",
+      "source": "ImageGen, normalizado para a grade do jogo"
+    },
+    {
+      "id": "hinata",
+      "name": "Hinata",
+      "group": "academia",
+      "height": 34,
+      "shapes": [
+        {
+          "x": 12,
+          "y": 10,
+          "w": 17,
+          "h": 34
+        },
+        {
+          "x": 12,
+          "y": 10,
+          "w": 17,
+          "h": 34
+        },
+        {
+          "x": 12,
+          "y": 10,
+          "w": 17,
+          "h": 34
+        }
+      ],
+      "palette": 34,
+      "poses": [
+        "Frente",
+        "Perfil",
+        "Costas"
+      ],
+      "file": "hinata.png",
+      "status": "arte base integrada",
+      "source": "ImageGen, normalizado para a grade do jogo"
+    },
+    {
+      "id": "shino",
+      "name": "Shino",
+      "group": "academia",
+      "height": 34,
+      "shapes": [
+        {
+          "x": 11,
+          "y": 10,
+          "w": 18,
+          "h": 34
+        },
+        {
+          "x": 12,
+          "y": 10,
+          "w": 17,
+          "h": 34
+        },
+        {
+          "x": 11,
+          "y": 10,
+          "w": 18,
+          "h": 34
+        }
+      ],
+      "palette": 34,
+      "poses": [
+        "Frente",
+        "Perfil",
+        "Costas"
+      ],
+      "file": "shino.png",
+      "status": "arte base integrada",
+      "source": "ImageGen, normalizado para a grade do jogo"
+    },
+    {
+      "id": "daichi",
+      "name": "Daichi",
+      "group": "academia",
+      "height": 34,
+      "shapes": [
+        {
+          "x": 12,
+          "y": 10,
+          "w": 17,
+          "h": 34
+        },
+        {
+          "x": 12,
+          "y": 10,
+          "w": 17,
+          "h": 34
+        },
+        {
+          "x": 12,
+          "y": 10,
+          "w": 16,
+          "h": 34
+        }
+      ],
+      "palette": 34,
+      "poses": [
+        "Frente",
+        "Perfil",
+        "Costas"
+      ],
+      "file": "daichi.png",
+      "status": "arte base integrada",
+      "source": "ImageGen, normalizado para a grade do jogo"
+    },
+    {
+      "id": "rock-lee",
+      "name": "Rock Lee",
+      "group": "time-guy",
+      "height": 35,
+      "shapes": [
+        {
+          "x": 12,
+          "y": 9,
+          "w": 16,
+          "h": 35
+        },
+        {
+          "x": 12,
+          "y": 9,
+          "w": 16,
+          "h": 35
+        },
+        {
+          "x": 12,
+          "y": 9,
+          "w": 16,
+          "h": 35
+        }
+      ],
+      "palette": 34,
+      "poses": [
+        "Frente",
+        "Perfil",
+        "Costas"
+      ],
+      "file": "rock-lee.png",
+      "status": "arte base integrada",
+      "source": "ImageGen, normalizado para a grade do jogo"
+    },
+    {
+      "id": "neji",
+      "name": "Neji",
+      "group": "time-guy",
+      "height": 35,
+      "shapes": [
+        {
+          "x": 12,
+          "y": 9,
+          "w": 17,
+          "h": 35
+        },
+        {
+          "x": 12,
+          "y": 9,
+          "w": 17,
+          "h": 35
+        },
+        {
+          "x": 12,
+          "y": 9,
+          "w": 17,
+          "h": 35
+        }
+      ],
+      "palette": 34,
+      "poses": [
+        "Frente",
+        "Perfil",
+        "Costas"
+      ],
+      "file": "neji.png",
+      "status": "arte base integrada",
+      "source": "ImageGen, normalizado para a grade do jogo"
+    },
+    {
+      "id": "tenten",
+      "name": "Tenten",
+      "group": "time-guy",
+      "height": 35,
+      "shapes": [
+        {
+          "x": 12,
+          "y": 9,
+          "w": 17,
+          "h": 35
+        },
+        {
+          "x": 13,
+          "y": 9,
+          "w": 15,
+          "h": 35
+        },
+        {
+          "x": 12,
+          "y": 9,
+          "w": 17,
+          "h": 35
+        }
+      ],
+      "palette": 34,
+      "poses": [
+        "Frente",
+        "Perfil",
+        "Costas"
+      ],
+      "file": "tenten.png",
+      "status": "arte base integrada",
+      "source": "ImageGen, normalizado para a grade do jogo"
+    },
+    {
+      "id": "guy",
+      "name": "Might Guy",
+      "group": "time-guy",
+      "height": 37,
+      "shapes": [
+        {
+          "x": 11,
+          "y": 7,
+          "w": 19,
+          "h": 37
+        },
+        {
+          "x": 14,
+          "y": 7,
+          "w": 13,
+          "h": 37
+        },
+        {
+          "x": 11,
+          "y": 7,
+          "w": 19,
+          "h": 37
+        }
+      ],
+      "palette": 34,
+      "poses": [
+        "Frente",
+        "Perfil",
+        "Costas"
+      ],
+      "file": "guy.png",
+      "status": "arte base integrada",
+      "source": "ImageGen, normalizado para a grade do jogo"
+    },
+    {
+      "id": "kakashi",
+      "name": "Kakashi",
+      "group": "senseis",
+      "height": 37,
+      "shapes": [
+        {
+          "x": 12,
+          "y": 7,
+          "w": 17,
+          "h": 37
+        },
+        {
+          "x": 12,
+          "y": 7,
+          "w": 17,
+          "h": 37
+        },
+        {
+          "x": 12,
+          "y": 7,
+          "w": 17,
+          "h": 37
+        }
+      ],
+      "palette": 34,
+      "poses": [
+        "Frente",
+        "Perfil",
+        "Costas"
+      ],
+      "file": "kakashi.png",
+      "status": "arte base integrada",
+      "source": "ImageGen, normalizado para a grade do jogo"
+    },
+    {
+      "id": "asuma",
+      "name": "Asuma",
+      "group": "senseis",
+      "height": 37,
+      "shapes": [
+        {
+          "x": 11,
+          "y": 7,
+          "w": 19,
+          "h": 37
+        },
+        {
+          "x": 12,
+          "y": 7,
+          "w": 16,
+          "h": 37
+        },
+        {
+          "x": 10,
+          "y": 7,
+          "w": 20,
+          "h": 37
+        }
+      ],
+      "palette": 34,
+      "poses": [
+        "Frente",
+        "Perfil",
+        "Costas"
+      ],
+      "file": "asuma.png",
+      "status": "arte base integrada",
+      "source": "ImageGen, normalizado para a grade do jogo"
+    },
+    {
+      "id": "kurenai",
+      "name": "Kurenai",
+      "group": "senseis",
+      "height": 37,
+      "shapes": [
+        {
+          "x": 10,
+          "y": 7,
+          "w": 21,
+          "h": 37
+        },
+        {
+          "x": 11,
+          "y": 7,
+          "w": 19,
+          "h": 37
+        },
+        {
+          "x": 10,
+          "y": 7,
+          "w": 21,
+          "h": 37
+        }
+      ],
+      "palette": 34,
+      "poses": [
+        "Frente",
+        "Perfil",
+        "Costas"
+      ],
+      "file": "kurenai.png",
+      "status": "arte base integrada",
+      "source": "ImageGen, normalizado para a grade do jogo"
+    },
+    {
+      "id": "naomi",
+      "name": "Naomi",
+      "group": "senseis",
+      "height": 37,
+      "shapes": [
+        {
+          "x": 11,
+          "y": 7,
+          "w": 18,
+          "h": 37
+        },
+        {
+          "x": 12,
+          "y": 7,
+          "w": 17,
+          "h": 37
+        },
+        {
+          "x": 11,
+          "y": 7,
+          "w": 18,
+          "h": 37
+        }
+      ],
+      "palette": 34,
+      "poses": [
+        "Frente",
+        "Perfil",
+        "Costas"
+      ],
+      "file": "naomi.png",
+      "status": "arte base integrada",
+      "source": "ImageGen, normalizado para a grade do jogo"
+    },
+    {
+      "id": "maki",
+      "name": "Maki",
+      "group": "missoes",
+      "height": 35,
+      "shapes": [
+        {
+          "x": 12,
+          "y": 9,
+          "w": 17,
+          "h": 35
+        },
+        {
+          "x": 10,
+          "y": 9,
+          "w": 20,
+          "h": 35
+        },
+        {
+          "x": 11,
+          "y": 9,
+          "w": 18,
+          "h": 35
+        }
+      ],
+      "palette": 34,
+      "poses": [
+        "Frente",
+        "Perfil",
+        "Costas"
+      ],
+      "file": "maki.png",
+      "status": "arte base integrada",
+      "source": "ImageGen, normalizado para a grade do jogo"
+    },
+    {
+      "id": "tazuna",
+      "name": "Tazuna",
+      "group": "missoes",
+      "height": 36,
+      "shapes": [
+        {
+          "x": 10,
+          "y": 8,
+          "w": 20,
+          "h": 36
+        },
+        {
+          "x": 11,
+          "y": 8,
+          "w": 18,
+          "h": 36
+        },
+        {
+          "x": 10,
+          "y": 8,
+          "w": 20,
+          "h": 36
+        }
+      ],
+      "palette": 34,
+      "poses": [
+        "Frente",
+        "Perfil",
+        "Costas"
+      ],
+      "file": "tazuna.png",
+      "status": "arte base integrada",
+      "source": "ImageGen, normalizado para a grade do jogo"
+    }
+  ],
+  "renderizador": "src/render/npc-sprites.ts",
+  "animacao": "Caminhada nas quatro direções e oito poses laterais de combate geradas na grade de 40 × 46. A arte base tem três poses paradas."
+}

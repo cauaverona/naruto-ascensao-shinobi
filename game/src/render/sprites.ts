@@ -1,9 +1,14 @@
 // Sprites dos personagens: células nativas de 40 × 46 por pose, âncora no pé em (20,44).
 // Linhas: 0 frente, 1 lado (direita; esquerda é espelhada), 2 costas. Quatro quadros de caminhada.
-// O protagonista e os personagens originais com `look` são recoloridos a partir da folha base.
+// O protagonista e os personagens com `look` são recoloridos a partir da folha base.
 import type { Look, SpriteRole } from '../data/characters';
-import { accessorySet, OUTFITS, SCARVES } from '../data/appearance';
+import { accessorySet, bandPositionOf, OUTFITS, SCARVES } from '../data/appearance';
+import { paintBandana } from './bandana';
 import { offscreen, loadImage } from './gfx';
+import { CELL_W, CELL_H, SOLE, npcFrame, npcSpritesReady, type CombatPose, type Dir } from './npc-sprites';
+import portraitAtlasUrl from '../assets/npc-portraits.png';
+import npcArtwork from '../assets/npc/manifesto.json';
+export { CELL_W, CELL_H, SOLE, type CombatPose, type Dir } from './npc-sprites';
 
 const files = import.meta.glob('../assets/*-{walk,face,idle}.png', { eager: true, import: 'default' }) as Record<string, string>;
 const ROLES: SpriteRole[] = ['player', 'iruka', 'emi', 'gen', 'naruto', 'sasuke', 'sakura'];
@@ -13,10 +18,10 @@ const art = Object.fromEntries(ROLES.map((r) => [r, {
   idle: loadImage(files[`../assets/${r}-idle.png`]),
 }])) as Record<SpriteRole, { walk: HTMLImageElement; face: HTMLImageElement; idle: HTMLImageElement }>;
 
-export const spritesReady = Promise.all(Object.values(art).flatMap((a) => [a.walk, a.face, a.idle]).map((i) => i.decode().catch(() => undefined)));
-
-export const CELL_W = 40, CELL_H = 46, SOLE = 44;
-export type Dir = 'up' | 'down' | 'left' | 'right';
+const baseSpritesReady = Promise.all(Object.values(art).flatMap((a) => [a.walk, a.face, a.idle]).map((i) => i.decode().catch(() => undefined)));
+const dialogueAtlas = loadImage(portraitAtlasUrl);
+const dialogueIndices = new Map(npcArtwork.frames.map(({ id }, index) => [id, index]));
+export const spritesReady = Promise.all([baseSpritesReady, npcSpritesReady, dialogueAtlas.decode().catch(() => undefined)]);
 
 export const clothes: Record<string, string[]> = {
   'Índigo': ['#252b48', '#455b88', '#879bc0'], Folha: ['#283b35', '#577757', '#a5b780'], Terracota: ['#553637', '#ad624b', '#dda075'], Ameixa: ['#403046', '#885b82', '#bf95a8'],
@@ -45,7 +50,7 @@ export const FEMININE_CUT = 'Rabo lateral';
 export const ACCESSORIES = ['Nenhum', 'Óculos', 'Máscara', 'Faixa na testa', 'Curativo', 'Óculos redondos', 'Brinco', 'Presilha'];
 export const MARKS = ['Nenhuma', 'Cicatriz', 'Bigodes', 'Marcas vermelhas'];
 
-export interface Actor { role: SpriteRole; look?: Look; bandana?: boolean }
+export interface Actor { role: SpriteRole; look?: Look; bandana?: boolean; spriteId?: string }
 
 const palettes = new Map<string[], number[][]>();
 const frameCache = new Map<string, HTMLCanvasElement>();
@@ -107,6 +112,11 @@ function paintFaceMarks(d: Uint8ClampedArray, skin: Uint8Array, mark: string | u
     blend(x, y - 1, scar, 0.66);
     blend(x - 1, y, scar, 0.85);
     blend(x - 2, y + 1, scar, 0.62);
+  } else if (mark === 'Sobrancelhas fortes') {
+    for (const x of side ? [rightCheek - 1, rightCheek] : [cx - 4, cx - 3, cx + 2, cx + 3]) {
+      blend(x, y - 3, whisker, 1);
+      blend(x, y - 2, whisker, 0.9);
+    }
   } else if (mark === 'Bigodes') {
     for (const [x, towardsNose] of side ? [[rightCheek, -1]] : [[cx - 4, 1], [cx + 4, -1]]) {
       blend(x, y, whisker, 0.86);
@@ -243,6 +253,14 @@ function drawCut(g: Ctx, cut: string, dir: Dir, top: number, left: number, right
   const layer = offscreen(CELL_W, CELL_H), b = layer.getContext('2d')!;
   const tie = '#b44b3e';
   switch (cut) {
+    case 'Corte tigela': {
+      const start = side ? cx - 4 : left + 2;
+      const width = Math.max(6, right - start - 1);
+      R(g, dark, start, top + 3, width, 3);
+      R(g, mid, start + 1, top + 3, width - 2, 2);
+      R(g, light, start + 2, top + 3, width - 4, 1);
+      break;
+    }
     case 'Franja': {
       if (!back) {
         const bx = side ? right - 7 : cx - 5, by = top + 4;
@@ -268,6 +286,19 @@ function drawCut(g: Ctx, cut: string, dir: Dir, top: number, left: number, right
         // Cauda afinando para trás e para baixo.
         R(b, dark, left - 2, top - 1, 4, 3); R(b, dark, left - 4, top + 1, 4, 4); R(b, mid, left - 3, top + 2, 2, 2);
         R(b, dark, left - 5, top + 4, 3, 6); R(b, mid, left - 4, top + 5, 1, 3); R(b, dark, left - 5 - sway, top + 10, 2, 3);
+      }
+      break;
+    }
+    case 'Coques duplos': {
+      const buns = side ? [left - 2, right - 4] : [left + 1, right - 5];
+      for (const [i, x] of buns.entries()) {
+        const y = top - (side && i === 1 ? 2 : 4);
+        const layer = side && i === 1 ? b : g;
+        R(layer, dark, x + 1, y, 4, 1);
+        R(layer, dark, x, y + 1, 6, 4);
+        R(layer, mid, x + 1, y + 1, 4, 3);
+        R(layer, light, x + 2, y + 1, 2, 1);
+        R(layer, dark, x + 1, y + 5, 4, 1);
       }
       break;
     }
@@ -441,26 +472,45 @@ function drawFace(g: Ctx, p: Look, dir: Dir, top: number, left: number, right: n
   }
 }
 
-/** Bandana de Konoha sobre a testa (aparece depois da graduação). A cor do pano é escolha do jogador. */
-function drawBandana(g: CanvasRenderingContext2D, top: number, dir: Dir, band?: string) {
-  const cloth = bandSet[band ?? 'Azul'] ?? '#2b3550';
-  const y = top + 4;
-  if (dir === 'up') { g.fillStyle = cloth; g.fillRect(14, y, 12, 2); g.fillRect(19, y + 2, 2, 3); return; }
-  g.fillStyle = cloth; g.fillRect(13, y, 14, 3);
-  g.fillStyle = '#b8c2cc'; g.fillRect(dir === 'down' ? 16 : dir === 'right' ? 18 : 15, y, 7, 3);
-  g.fillStyle = '#6d7884'; g.fillRect(dir === 'down' ? 19 : dir === 'right' ? 21 : 18, y + 1, 2, 1);
+/** Pinta o protetor sobre a testa ou no traje, seguindo a direção do quadro. */
+function drawBandana(g: Ctx, a: Actor, top: number, dir: Dir) {
+  const { role, look } = a;
+  if (!look && (role === 'iruka' || role === 'naruto')) return;
+  const position = bandPositionOf(look);
+  if (position === 'guardada') return;
+  const side = dir === 'right', back = dir === 'up';
+  const color = bandSet[look?.band ?? 'Azul'] ?? bandSet.Azul;
+  const plate = back ? 'hidden' : side ? 'right' : 'center';
+  if (position === 'cintura') {
+    paintBandana(g, side ? 16 : 14, HIP[role] - 3, side ? 10 : 12, color, plate);
+  } else if (position === 'pescoco') {
+    paintBandana(g, side ? 16 : 15, top + 14, side ? 10 : 11, color, plate);
+  } else if (position === 'braco') {
+    paintBandana(g, side ? 16 : back ? 12 : 23, top + 18, side ? 6 : 5, color, 'center');
+  } else if (!look && role === 'sakura') {
+    if (!back) paintBandana(g, side ? 19 : 17, 10, side ? 4 : 6, '#65738a', plate);
+  } else {
+    const y = look ? top + 4 : role === 'sasuke' ? 12 : 13;
+    paintBandana(g, side ? 17 : 14, y, side ? 10 : 12, color, plate);
+  }
 }
 
 const HIP: Record<SpriteRole, number> = { gen: 34, iruka: 31, naruto: 32, player: 32, sasuke: 32, sakura: 32, emi: 32 };
 
 function appearanceKey(a: Actor) {
   const l = a.look;
-  return [a.role, l?.skin, l?.hair, l?.coat, l?.cut, l?.trim, l?.accessory, l?.mark, l?.band,
-    l?.outfit, l?.scarf, l?.accessoryTone, l?.clan === 'Uchiha', a.bandana].join('|');
+  return [a.spriteId, a.role, l?.skin, l?.hair, l?.coat, l?.cut, l?.trim, l?.accessory, l?.mark, l?.band,
+    l?.outfit, l?.scarf, l?.accessoryTone, l?.clan === 'Uchiha', bandPositionOf(l), a.bandana].join('|');
 }
 
 /** Quadro pronto: frame >= 0 caminhada; -1 repouso; -2 repouso com respiração. */
-export function stillFrame(a: Actor, dir: Dir, frame: number, gesture = false): HTMLCanvasElement {
+function illustratedFrame(a: Actor, dir: Dir, frame: number, pose?: CombatPose) {
+  if (a.spriteId) return npcFrame(a.spriteId, dir, frame, a.bandana ? bandSet[a.look?.band ?? 'Azul'] ?? bandSet.Azul : undefined, pose);
+}
+
+export function stillFrame(a: Actor, dir: Dir, frame: number, gesture = false, pose?: CombatPose): HTMLCanvasElement {
+  const illustrated = illustratedFrame(a, dir, frame, pose);
+  if (illustrated) return illustrated;
   const custom = !!a.look;
   const L = a.look;
   const key = `${appearanceKey(a)}|${dir}|${frame}|${gesture}`;
@@ -481,8 +531,8 @@ export function stillFrame(a: Actor, dir: Dir, frame: number, gesture = false): 
     b.drawImage(set.idle, 0, row * CELL_H + hip, CELL_W, CELL_H - hip, 0, hip, CELL_W, CELL_H - hip);
   }
   let top = 6;
-  if (custom && L) top = customize(base, L, canonical, frame, !!a.bandana, dir === 'left');
-  if (a.bandana) drawBandana(b, top, canonical, L?.band);
+  if (custom && L) top = customize(base, L, canonical, frame, !!a.bandana && bandPositionOf(L) === 'testa', dir === 'left');
+  if (a.bandana) drawBandana(b, a, top, canonical);
   if (frame < 0 || gesture) {
     const split = 32, drop = gesture ? 0 : frame === -2 ? 2 : 1;
     g.drawImage(base, 0, 0, CELL_W, split - drop, 0, drop, CELL_W, split - drop);
@@ -493,12 +543,12 @@ export function stillFrame(a: Actor, dir: Dir, frame: number, gesture = false): 
   return canvas;
 }
 
-export function drawActor(g: CanvasRenderingContext2D, x: number, y: number, a: Actor, dir: Dir, frame: number, gesture = false) {
+export function drawActor(g: CanvasRenderingContext2D, x: number, y: number, a: Actor, dir: Dir, frame: number, gesture = false, pose?: CombatPose) {
   x = Math.round(x); y = Math.round(y);
   const adult = a.role === 'iruka' || a.role === 'gen', w = adult ? 15 : 13;
   g.fillStyle = 'rgba(107,85,63,.22)'; g.fillRect((x - w / 2 + 2) | 0, y - 1, w + 3, 2);
   g.fillStyle = 'rgba(84,65,54,.30)'; g.fillRect(x - 5, y - 1, 11, 2);
-  g.drawImage(stillFrame(a, dir, frame, gesture), x - CELL_W / 2, y - SOLE);
+  g.drawImage(stillFrame(a, dir, frame, gesture, pose), x - CELL_W / 2, y - SOLE);
 }
 
 const portraitCache = new Map<string, HTMLCanvasElement>();
@@ -511,12 +561,28 @@ export function portrait(a: Actor): HTMLCanvasElement {
   g.imageSmoothingEnabled = false;
   g.fillStyle = '#baba97'; g.fillRect(0, 0, 40, 40);
   const set = art[a.role];
-  if (a.look) {
+  const illustrated = illustratedFrame(a, 'down', -1);
+  if (illustrated) {
+    g.drawImage(illustrated, 6, 4, 28, 28, 0, 0, 40, 40);
+  } else if (a.look) {
     const f = stillFrame(a, 'down', -1);
     g.drawImage(f, 4, 0, 32, 30, 0, 0, 40 * 1.0, 37);
   } else if (set.face.naturalWidth) g.drawImage(set.face, 0, 0);
-  if (set.face.naturalWidth) portraitCache.set(key, c);
+  if (illustrated || set.face.naturalWidth) portraitCache.set(key, c);
   return c;
+}
+
+export function drawDialoguePortrait(g: CanvasRenderingContext2D, a: Actor): void {
+  const index = a.spriteId ? dialogueIndices.get(a.spriteId) : undefined;
+  if (index === undefined || dialogueAtlas.naturalWidth !== npcArtwork.retratos.size[0]
+    || dialogueAtlas.naturalHeight !== npcArtwork.retratos.size[1]) {
+    g.drawImage(portrait(a), 0, 0);
+    return;
+  }
+  const [width, height] = npcArtwork.retratos.cell;
+  g.fillStyle = '#baba97';
+  g.fillRect(0, 0, width, height);
+  g.drawImage(dialogueAtlas, index * width, 0, width, height, 0, 0, width, height);
 }
 
 export const idlePose = (time: number, offset: number, calm: boolean) => (calm ? -1 : (time + offset) % 3.3 < 0.9 ? -2 : -1);

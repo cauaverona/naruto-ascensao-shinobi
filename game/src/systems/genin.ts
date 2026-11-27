@@ -1,15 +1,23 @@
 import { PATROL_POSTS, SEAL_CASES, SEAL_CLUES } from '../data/genin-assignments';
 import { SUPPORT, type Tactic } from '../data/squad';
-import { CHARACTERS } from '../data/characters';
+import { CHARACTERS, GUY_TEAM } from '../data/characters';
 import type { Stat, StatBlock } from '../data/stats';
 import { addLog, type Campaign } from '../state/campaign';
 import { bond } from './relations';
 
 export const GENIN_STAGES = [
-  'encontro', 'sinos', 'suprimentos', 'entrega', 'busca', 'retorno',
+  'encontro', 'sinos', 'suprimentos-ordem', 'suprimentos', 'entrega', 'tora-ordem', 'busca', 'retorno',
   'selo-ordem', 'selo-pistas', 'patrulha-ordem', 'patrulha-rota', 'patrulha-relato', 'ondas', 'concluida',
 ] as const;
 export type GeninStage = (typeof GENIN_STAGES)[number];
+
+export const MISSION_OFFERS = {
+  'suprimentos-ordem': { name: 'Suprimentos do campo', active: 'suprimentos' },
+  'tora-ordem': { name: 'Captura de Tora', active: 'busca' },
+  'selo-ordem': { name: 'O lacre trocado', active: 'selo-pistas' },
+  'patrulha-ordem': { name: 'A ronda das lanternas', active: 'patrulha-rota' },
+} satisfies Partial<Record<GeninStage, { name: string; active: GeninStage }>>;
+export type MissionOffer = keyof typeof MISSION_OFFERS;
 
 export const GEAR = {
   luvas: { name: 'Luvas de treino', price: 35, stat: 'Taijutsu', bonus: 2 },
@@ -31,15 +39,42 @@ export function geninStage(c: Campaign): GeninStage | null {
   return value ?? 'encontro';
 }
 
+export function pendingMission(c: Campaign): MissionOffer | undefined {
+  const stage = geninStage(c);
+  if (stage && Object.hasOwn(MISSION_OFFERS, stage)) return stage as MissionOffer;
+}
+
+export function missionDeferred(c: Campaign) {
+  const stage = pendingMission(c);
+  return stage !== undefined && c.flags['genin-missao-adiada'] === stage;
+}
+
+export function deferMission(c: Campaign, offer: MissionOffer) {
+  if (pendingMission(c) !== offer || missionDeferred(c)) return false;
+  c.flags['genin-missao-adiada'] = offer;
+  addLog(c, `Missão D adiada: ${MISSION_OFFERS[offer].name}.`);
+  return true;
+}
+
+export function acceptMission(c: Campaign, offer: MissionOffer, ally = '') {
+  if (pendingMission(c) !== offer) return false;
+  const { active, name } = MISSION_OFFERS[offer];
+  c.flags['genin-etapa'] = active;
+  delete c.flags['genin-missao-adiada'];
+  if (offer === 'selo-ordem' && ally && teamMembers(c).includes(ally)) c.flags['selo-apoio'] = ally;
+  addLog(c, `Missão D aceita: ${name}.`);
+  return true;
+}
+
 export function senseiId(c: Campaign) {
   const assigned = String(c.flags.sensei ?? '');
-  if (['kakashi', 'asuma', 'kurenai', 'naomi'].includes(assigned)) return assigned;
+  if (['kakashi', 'asuma', 'kurenai', 'naomi', 'guy'].includes(assigned)) return assigned;
   return c.events['formacao-equipes'] === 'jogador-time7' ? 'kakashi' : 'naomi';
 }
 
 export function teamMembers(c: Campaign) {
   return [...new Set(String(c.flags.equipe ?? '').split(','))]
-    .filter((id) => id !== 'player' && CHARACTERS[id]?.classmate).slice(0, 2);
+    .filter((id) => CHARACTERS[id]?.classmate || GUY_TEAM.some((member) => member === id)).slice(0, 2);
 }
 
 export function beginGenin(c: Campaign) {
@@ -53,11 +88,11 @@ export function beginGenin(c: Campaign) {
 
 export function resolveBells(c: Campaign, score: number, shared: boolean) {
   if (geninStage(c) !== 'sinos' || !shared || score < 1 / 3) return false;
-  c.flags['genin-etapa'] = 'suprimentos';
+  c.flags['genin-etapa'] = 'suprimentos-ordem';
   c.flags['genin-sinos-score'] = Math.round(score * 100);
   c.xp += score >= 0.6 ? 70 : 50;
   for (const id of [...teamMembers(c), senseiId(c)]) bond(c, id, { confianca: 8, respeito: 4 }, 'Trabalhou junto no teste dos sinos.');
-  addLog(c, 'Equipe aprovada no teste dos sinos. Primeira missão D aceita: Suprimentos do campo.');
+  addLog(c, 'Equipe aprovada no teste dos sinos. Suprimentos do campo está disponível.');
   return true;
 }
 
@@ -70,7 +105,7 @@ export function collectSupply(c: Campaign, id: string) {
 
 export function turnInSupplies(c: Campaign) {
   if (geninStage(c) !== 'entrega') return false;
-  c.flags['genin-etapa'] = 'busca';
+  c.flags['genin-etapa'] = 'tora-ordem';
   reward(c, 'Suprimentos do campo', 80);
   return true;
 }
@@ -119,14 +154,6 @@ export function sealCase(c: Campaign) {
   return SEAL_CASES[c.seed % SEAL_CASES.length];
 }
 
-export function beginSealCase(c: Campaign, ally = '') {
-  if (geninStage(c) !== 'selo-ordem') return false;
-  c.flags['genin-etapa'] = 'selo-pistas';
-  if (ally && teamMembers(c).includes(ally)) c.flags['selo-apoio'] = ally;
-  addLog(c, 'Missão D aceita: O lacre trocado.');
-  return true;
-}
-
 export function recordSealClue(c: Campaign, id: string) {
   if (geninStage(c) !== 'selo-pistas' || c.flags[id] || !SEAL_CLUES.some((clue) => clue.id === id)) return false;
   c.flags[id] = true;
@@ -144,13 +171,6 @@ export function solveSealCase(c: Campaign, destination: string) {
   const ally = String(c.flags['selo-apoio'] ?? '');
   if (teamMembers(c).includes(ally)) bond(c, ally, { respeito: 4 }, 'Ajudou a cruzar as pistas da encomenda.');
   reward(c, 'O lacre trocado', 120);
-  return true;
-}
-
-export function beginPatrol(c: Campaign) {
-  if (geninStage(c) !== 'patrulha-ordem') return false;
-  c.flags['genin-etapa'] = 'patrulha-rota';
-  addLog(c, 'Missão D aceita: A ronda das lanternas.');
   return true;
 }
 

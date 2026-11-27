@@ -4,7 +4,7 @@ import { available, resolveRound, type Action, type Battle, type Ev } from '../c
 import { DUEL_STYLES } from '../combat/styles';
 import { chooseAction } from '../combat/ai';
 import { JUTSUS } from '../data/jutsus';
-import { drawActor, portrait, type Actor } from '../render/sprites';
+import { drawActor, portrait, type Actor, type CombatPose } from '../render/sprites';
 import { px } from '../render/gfx';
 import { audio } from '../audio';
 import { drawCombatEffect, type CombatEffect, type EffectKind } from '../render/combat-effects';
@@ -13,7 +13,7 @@ type G = CanvasRenderingContext2D;
 const ease = (t: number) => 1 - Math.pow(1 - Math.min(1, Math.max(0, t)), 3);
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-interface Pose { dx: number; dy: number; alpha: number; frame: number }
+interface Pose { dx: number; dy: number; alpha: number; frame: number; motion?: CombatPose }
 interface Floater { x: number; y: number; text: string; color: string; age: number; big: boolean }
 interface Shot { from: number; to: number; t: number; weapon: 'kunai' | 'shuriken' }
 
@@ -21,6 +21,7 @@ export interface BattleSetup {
   battle: Battle;
   actors: [Actor, Actor];
   title: string;
+  training: boolean;
   /** Desenha o cenário da arena (coordenadas da tela lógica). */
   background(g: G, w: number, h: number): void;
 }
@@ -35,7 +36,9 @@ export class BattleScene {
   private effects: CombatEffect[] = [];
   private clones = [0, 0];
   private disguises = [false, false];
+  private guards = [false, false];
   private displayHp: number[];
+  private displayDistance: Battle['distance'];
   private reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
   private sep: number;
   private sepTarget: number;
@@ -53,7 +56,8 @@ export class BattleScene {
     this.actors = setup.actors;
     this.clones = this.b.fighters.map((f) => f.status.clones);
     this.disguises = this.b.fighters.map((f) => f.status.disguised);
-    this.sep = this.sepTarget = this.zoneSep(this.b.distance);
+    this.displayDistance = this.b.distance;
+    this.sep = this.sepTarget = this.zoneSep(this.displayDistance);
     this.rng = new Rng(this.b.rng ^ 0x9e3779b9);
     this.ui = ui;
     this.displayHp = this.b.fighters.map((f) => f.hp);
@@ -107,7 +111,6 @@ export class BattleScene {
     g.fillRect(0, ground + 6, w, 3);
 
     for (const side of [0, 1] as const) {
-      const f = this.b.fighters[side];
       const { x, y } = this.posOf(side, w, h);
       const dir = side === 0 ? 'right' : 'left';
       const p = this.poses[side];
@@ -115,8 +118,9 @@ export class BattleScene {
         this.drawBig(g, this.cloneX(x, side, count) + sx, y - (count % 2) * 6 + sy, this.actors[side], dir, -1, 0.54);
       }
       const actor = this.disguises[side] ? this.actors[1 - side] : this.actors[side];
-      this.drawBig(g, x + sx, y + sy, actor, dir, p.frame, p.alpha * (this.disguises[side] ? 0.88 : 1));
-      if (f.status.defending) { g.fillStyle = 'rgba(240,194,122,.85)'; g.fillRect(x - 2 + sx, y - 50 * this.big + sy, 4, 4); }
+      const motion = p.motion ?? (p.frame < 0 ? this.guards[side] ? 'guard' : 'ready' : undefined);
+      this.drawBig(g, x + sx, y + sy, actor, dir, p.frame, p.alpha, motion);
+      if (this.guards[side]) { g.fillStyle = 'rgba(240,194,122,.85)'; g.fillRect(x - 2 + sx, y - 50 * this.big + sy, 4, 4); }
     }
     for (const s of this.shots) {
       const a = this.posOf(s.from, w, h), b = this.posOf(s.to, w, h);
@@ -130,7 +134,7 @@ export class BattleScene {
     for (const effect of this.effects) {
       const pos = this.posOf(effect.side, w, h);
       let x = effect.offset ? this.cloneX(pos.x, effect.side, effect.offset) : pos.x;
-      if (effect.kind === 'fire') {
+      if (effect.kind === 'fire' || effect.kind === 'ice') {
         const target = this.posOf(1 - effect.side, w, h);
         const projectile = Math.min(1, effect.age / 0.44);
         x += (target.x - x) * projectile;
@@ -163,12 +167,12 @@ export class BattleScene {
     this.effects.push({ kind, side, duration, offset, accent, age: 0 });
   }
 
-  private drawBig(g: G, x: number, y: number, a: Actor, dir: 'left' | 'right', frame: number, alpha: number) {
+  private drawBig(g: G, x: number, y: number, a: Actor, dir: 'left' | 'right', frame: number, alpha: number, motion?: CombatPose) {
     g.save();
     g.globalAlpha = alpha;
     g.translate(x, y);
     g.scale(this.big, this.big);
-    drawActor(g, 0, 0, a, dir, frame);
+    drawActor(g, 0, 0, a, dir, frame, false, motion);
     g.restore();
   }
 
@@ -198,13 +202,14 @@ export class BattleScene {
       }));
       const tags: string[] = [];
       if (f.status.clones) tags.push(`${f.status.clones} clone${f.status.clones > 1 ? 's' : ''}`);
-      if (f.status.defending) tags.push('em guarda');
+      if (this.guards[side]) tags.push('em guarda');
       if (f.status.disguised) tags.push('disfarçado');
       if (side === 0 && f.status.substitution) tags.push('substituição pronta');
       if (f.status.behind) tags.push('nas costas do rival');
+      if (f.status.chilled) tags.push('geada · próxima iniciativa −2');
       panel.querySelector('.tags')!.textContent = tags.join(' · ');
     }
-    this.el('.dist').textContent = ['Corpo a corpo', 'Distância média', 'Longa distância'][this.b.distance];
+    this.el('.dist').textContent = ['Corpo a corpo', 'Distância média', 'Longa distância'][this.displayDistance];
   }
 
   private say(text: string) { this.el('.blog').textContent = text; }
@@ -229,14 +234,15 @@ export class BattleScene {
     const find = (t: Action['type']) => opts.find((o) => o.action.type === t)!;
     if (sub === 'main') {
       const dist = this.b.distance;
-      mk('Taijutsu', dist ? 'Avança e golpeia' : 'Golpe corpo a corpo', true, () => pick({ type: 'taijutsu' }));
+      const taijutsu = dist === 2 && !me.status.behind ? 'Só aproxima · 2 RES' : dist ? 'Avança e golpeia · 4 RES' : 'Golpe corpo a corpo · 4 RES';
+      mk('Taijutsu', taijutsu, true, () => pick({ type: 'taijutsu' }));
       mk('Kunai', `${me.items.kunai} restantes`, find('kunai').ok, () => pick({ type: 'kunai' }));
       mk('Shuriken', `${me.items.shuriken} restantes`, find('shuriken').ok, () => pick({ type: 'shuriken' }));
       const jut = opts.filter((o) => o.action.type === 'jutsu');
       mk('Técnicas', jut.length ? `${jut.length} conhecidas` : 'Nenhuma ainda', jut.some((o) => o.ok), () => this.menu('jutsu'));
       mk('Avançar', 'Encurta a distância', find('advance').ok, () => pick({ type: 'advance' }));
       mk('Recuar', 'Abre distância', find('retreat').ok, () => pick({ type: 'retreat' }));
-      mk('Defender', 'Metade do dano, recupera fôlego', true, () => pick({ type: 'defend' }));
+      mk('Defender', 'Guarda imediata · +4 RES', true, () => pick({ type: 'defend' }));
       mk('Concentrar', 'Recupera chakra, fica exposto', find('focus').ok, () => pick({ type: 'focus' }));
       mk('Render-se', 'Encerra a luta', true, () => pick({ type: 'yield' }));
     } else {
@@ -251,7 +257,9 @@ export class BattleScene {
 
   private choose(): Promise<Action> {
     this.menu('main');
-    this.say(`Sua vez. ${this.b.round ? '' : 'Leia a distância: taijutsu rende colado, shuriken rende de longe.'}`);
+    if (!this.b.round && this.setup.training) this.say('As armas usadas em treino voltam ao estoque após a luta.');
+    else if (this.b.distance === 2 && !this.b.fighters[0].status.behind) this.say('Sua vez. De longe, taijutsu só aproxima. Shuriken tem mais alcance.');
+    else if (!this.b.round) this.say('Sua vez. Defender reduz o dano e pode abrir um contra-ataque.');
     return new Promise((r) => (this.resolveChoice = r));
   }
 
@@ -275,6 +283,7 @@ export class BattleScene {
       const ev = resolveRound(this.b, [mine, theirs]);
       await this.play(ev);
       this.displayHp = this.b.fighters.map((f) => f.hp);
+      this.guards.fill(false);
       this.renderPanels();
     }
     const won = this.b.over.winner === 0;
@@ -299,28 +308,46 @@ export class BattleScene {
           await wait(260);
           break;
         case 'move':
+          this.displayDistance = e.distance;
           this.sepTarget = this.zoneSep(e.distance);
+          this.renderPanels();
           this.poses[e.who].frame = 0;
           await this.anim(e.dash ? 160 : 320, (t) => { this.poses[e.who].frame = Math.floor(t * 8) % 4; });
           this.poses[e.who].frame = -1;
           break;
         case 'strike': {
           const style = DUEL_STYLES[this.b.fighters[e.who].id];
-          this.effect('slash', e.who, 0.28, 0, style?.accent);
-          audio.sfx('strike');
-          await this.anim(150, (t) => {
-            this.poses[e.who].dx = ease(t) * (this.reducedMotion.matches ? 6 : 18);
-            this.poses[e.who].frame = t > 0.45 ? 2 : 0;
-            if (!this.reducedMotion.matches && style?.opener === 'finta') this.poses[e.who].dy = -Math.round(Math.sin(t * Math.PI) * 6);
+          const p = this.poses[e.who];
+          p.motion = 'windup';
+          await this.anim(190, (t) => {
+            if (t < 0.36) {
+              p.dx = this.reducedMotion.matches ? 0 : -Math.round(t * 8);
+              p.frame = 0;
+              return;
+            }
+            if (p.motion === 'windup') {
+              p.motion = 'strike';
+              this.effect('slash', e.who, 0.28, 0, style?.accent);
+              audio.sfx('strike');
+            }
+            p.dx = ease((t - 0.36) / 0.64) * (this.reducedMotion.matches ? 6 : 18);
+            p.frame = 2;
+            if (!this.reducedMotion.matches && style?.opener === 'finta') p.dy = -Math.round(Math.sin(t * Math.PI) * 6);
           });
           break;
         }
-        case 'throw':
+        case 'throw': {
+          const p = this.poses[e.who];
+          p.motion = 'windup';
+          await wait(75);
+          p.motion = 'throw';
+          p.frame = 1;
           this.shots.push({ from: e.who, to: 1 - e.who, t: 0, weapon: e.weapon });
-          this.poses[e.who].frame = 1;
           await wait(300);
-          this.poses[e.who].frame = -1;
+          p.motion = undefined;
+          p.frame = -1;
           break;
+        }
         case 'hit': {
           const p = this.poses[e.who];
           this.displayHp[e.who] = Math.max(0, this.displayHp[e.who] - e.amount);
@@ -331,6 +358,7 @@ export class BattleScene {
           this.say(`${name(e.who)} ${e.guarded ? 'bloqueou parte do golpe' : e.crit ? 'sofreu um golpe crítico' : 'foi atingido'}.`);
           this.float(e.who, feedback, e.guarded ? '#9be2d4' : e.crit ? '#f0c27a' : '#ff8a6e', e.crit);
           this.renderPanels();
+          p.motion = e.guarded ? 'guard' : 'hurt';
           await this.anim(220, (t) => { p.dx = -Math.sin(t * Math.PI) * (e.guarded || this.reducedMotion.matches ? 3 : 8); });
           this.resetStrike();
           break;
@@ -346,6 +374,8 @@ export class BattleScene {
           this.shake = 5;
           this.float(victim, `-${e.amount}`, '#ff8a6e');
           this.renderPanels();
+          this.poses[e.who].motion = 'strike';
+          this.poses[victim].motion = 'hurt';
           await wait(380);
           this.resetStrike();
           break;
@@ -354,7 +384,8 @@ export class BattleScene {
           const p = this.poses[e.who];
           this.say(`${name(e.who)} escapou do golpe.`);
           this.float(e.who, 'Esquiva', '#cfe3ea');
-          await this.anim(260, (t) => { p.dy = -Math.sin(t * Math.PI) * 14; });
+          p.motion = 'dodge';
+          await this.anim(260, (t) => { p.dy = -Math.round(Math.sin(t * Math.PI) * (this.reducedMotion.matches ? 3 : 14)); });
           p.dy = 0;
           this.resetStrike();
           break;
@@ -385,7 +416,9 @@ export class BattleScene {
           this.effect('chakra', e.who, 0.34);
           audio.sfx('chakra');
           this.float(e.who, 'Selos de mão', '#e9dcc0');
+          this.poses[e.who].motion = 'seals';
           await wait(300);
+          this.poses[e.who].motion = undefined;
           break;
         case 'clones':
           this.clones[e.who] = e.count;
@@ -400,9 +433,33 @@ export class BattleScene {
           this.disguises[e.who] = false;
           this.float(e.who, 'Disfarce desfeito', '#e9dcc0'); this.renderPanels(); await wait(300); break;
         case 'fail': this.effect('fizzle', e.who); this.float(e.who, 'A técnica falhou', '#ff8a6e', true); this.say(`${name(e.who)} errou os selos de ${JUTSUS[e.jutsu]?.name ?? 'uma técnica'}.`); await wait(520); break;
-        case 'focus': this.effect('chakra', e.who, 0.48); this.float(e.who, `+${e.amount} CH`, '#8fd3e8'); this.renderPanels(); await wait(380); break;
-        case 'defend': this.effect('guard', e.who); this.float(e.who, 'Em guarda', '#f0c27a'); this.renderPanels(); await wait(300); break;
-        case 'technique': this.effect('fire', e.who, 0.55); audio.sfx('strike'); await wait(440); break;
+        case 'focus':
+          this.poses[e.who].motion = 'seals';
+          this.effect('chakra', e.who, 0.48); this.float(e.who, `+${e.amount} CH`, '#8fd3e8'); this.renderPanels();
+          await wait(380);
+          this.poses[e.who].motion = undefined;
+          break;
+        case 'defend':
+          this.guards[e.who] = true;
+          this.effect('guard', e.who);
+          audio.sfx('guard');
+          this.float(e.who, 'Em guarda', '#f0c27a');
+          this.renderPanels();
+          await wait(300);
+          break;
+        case 'technique':
+          this.poses[e.who].motion = 'throw';
+          this.effect(JUTSUS[e.jutsu]?.visual ?? 'fire', e.who, 0.55); audio.sfx('strike');
+          await wait(440);
+          this.poses[e.who].motion = undefined;
+          break;
+        case 'chill':
+          this.effect('frost', e.who, 0.55);
+          this.float(e.who, 'Geada', '#b4e4f0');
+          this.say(`${name(e.who)} perdeu iniciativa para a próxima rodada.`);
+          this.renderPanels();
+          await wait(360);
+          break;
         case 'text': this.say(e.text); await wait(500); break;
         case 'end': break;
       }
@@ -413,7 +470,7 @@ export class BattleScene {
     await wait(150);
   }
 
-  private resetStrike() { for (const p of this.poses) { p.dx = p.dy = 0; p.frame = -1; } }
+  private resetStrike() { for (const p of this.poses) { p.dx = p.dy = 0; p.frame = -1; p.motion = undefined; } }
 
   private anim(ms: number, step: (t: number) => void) {
     return new Promise<void>((done) => {

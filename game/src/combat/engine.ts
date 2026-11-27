@@ -21,6 +21,7 @@ export interface Status {
   disguised: boolean;
   defending: boolean;
   focused: boolean;
+  chilled: boolean;
   /** Atrás do adversário depois de uma substituição: próximo golpe é crítico. */
   behind: boolean;
 }
@@ -74,6 +75,7 @@ export type Ev =
   | { t: 'seals'; who: number }
   | { t: 'technique'; who: number; jutsu: string }
   | { t: 'fail'; who: number; jutsu: string }
+  | { t: 'chill'; who: number }
   | { t: 'focus'; who: number; amount: number }
   | { t: 'defend'; who: number }
   | { t: 'counter'; who: number; amount: number }
@@ -81,7 +83,7 @@ export type Ev =
   | { t: 'end'; winner: number; reason: string };
 
 export function freshStatus(): Status {
-  return { clones: 0, substitution: false, disguised: false, defending: false, focused: false, behind: false };
+  return { clones: 0, substitution: false, disguised: false, defending: false, focused: false, chilled: false, behind: false };
 }
 
 export interface FighterInput {
@@ -152,19 +154,21 @@ export function resolveRound(b: Battle, actions: [Action, Action]): Ev[] {
   const rng = new Rng(b.rng);
   const ev: Ev[] = [];
   b.round += 1;
-  const init = b.fighters.map((f, i) => f.stats.Velocidade + rng.next() * 3 - (actions[i].type === 'focus' ? 2 : 0));
+  const init = b.fighters.map((f, i) => f.stats.Velocidade + rng.next() * 3 - (actions[i].type === 'focus' ? 2 : 0) - (f.status.chilled ? 2 : 0));
   const order: (0 | 1)[] = init[0] >= init[1] ? [0, 1] : [1, 0];
-  for (const f of b.fighters) f.status.focused = false;
-  actions.forEach((a, i) => { if (a.type === 'focus') b.fighters[i].status.focused = true; });
+  if (actions[order[1]].type === 'defend' && actions[order[0]].type !== 'defend') order.reverse();
+  b.fighters.forEach((f, i) => {
+    f.status.focused = actions[i].type === 'focus';
+    f.status.chilled = false;
+  });
 
   for (const side of order) {
     if (b.over) break;
-    const me = b.fighters[side];
-    me.status.defending = false;
     act(b, side, actions[side], rng, ev);
   }
   for (const f of b.fighters) {
     f.status.focused = false;
+    f.status.defending = false;
     f.stamina = Math.min(f.staminaMax, f.stamina + 1);
   }
   if (!b.over && b.round >= b.maxRounds) {
@@ -179,12 +183,18 @@ export function resolveRound(b: Battle, actions: [Action, Action]): Ev[] {
 function act(b: Battle, side: 0 | 1, a: Action, rng: Rng, ev: Ev[]) {
   const me = b.fighters[side];
   const foe = b.fighters[side === 0 ? 1 : 0];
-  const label = a.type === 'taijutsu' ? DUEL_STYLES[me.id]?.strike ?? actionLabel(a) : actionLabel(a);
+  const approach = a.type === 'taijutsu' && b.distance === 2 && !me.status.behind;
+  const label = approach ? 'Aproximação' : a.type === 'taijutsu' ? DUEL_STYLES[me.id]?.strike ?? actionLabel(a) : actionLabel(a);
   ev.push({ t: 'act', who: side, label });
-  const cost = STAMINA_COST[a.type] ?? 0;
+  if ((a.type === 'advance' && b.distance === 0) || (a.type === 'retreat' && b.distance === 2)) {
+    ev.push({ t: 'text', text: a.type === 'advance' ? 'Os lutadores já estão frente a frente.' : 'Os lutadores já estão na distância máxima.' });
+    b.lastPublic[side] = '';
+    return;
+  }
+  const cost = STAMINA_COST[approach ? 'advance' : a.type] ?? 0;
   const exhausted = me.stamina < cost;
   me.stamina = Math.max(0, me.stamina - cost);
-  me.used[a.type === 'jutsu' ? a.id : a.type] = (me.used[a.type === 'jutsu' ? a.id : a.type] ?? 0) + 1;
+  if (a.type !== 'jutsu') me.used[a.type] = (me.used[a.type] ?? 0) + 1;
 
   switch (a.type) {
     case 'yield':
@@ -219,6 +229,12 @@ function act(b: Battle, side: 0 | 1, a: Action, rng: Rng, ev: Ev[]) {
       castJutsu(b, side, a.id, rng, ev);
       return;
     case 'taijutsu': {
+      if (approach) {
+        b.distance = 1;
+        ev.push({ t: 'move', who: side, distance: 1, dash: true });
+        b.lastPublic[side] = 'move';
+        return;
+      }
       let dash = false;
       if (b.distance > 0) { dash = true; b.distance = 0; ev.push({ t: 'move', who: side, distance: 0, dash: true }); }
       ev.push({ t: 'strike', who: side });
@@ -252,13 +268,15 @@ function act(b: Battle, side: 0 | 1, a: Action, rng: Rng, ev: Ev[]) {
 function castJutsu(b: Battle, side: 0 | 1, id: string, rng: Rng, ev: Ev[]) {
   const me = b.fighters[side];
   const j = JUTSUS[id];
-  const mastery = me.jutsus[id] ?? 0;
-  if (!j || me.chakra < j.chakraCost) { ev.push({ t: 'text', text: `${me.name} não tem chakra suficiente.` }); return; }
+  const mastery = me.jutsus[id];
+  if (!j || mastery === undefined) return;
+  if (me.chakra < j.chakraCost) { ev.push({ t: 'text', text: `${me.name} não tem chakra suficiente.` }); return; }
   if (b.distance < j.range[0] || b.distance > j.range[1]) {
     ev.push({ t: 'text', text: `${j.name} está fora de alcance.` });
     return;
   }
   me.chakra -= j.chakraCost;
+  me.used[id] = (me.used[id] ?? 0) + 1;
   ev.push({ t: 'seals', who: side });
   b.lastPublic[side] = 'seals';
   if (!rng.chance(castChance(mastery, me.stats['Controle de chakra'], j.rank))) {
@@ -279,7 +297,7 @@ function castJutsu(b: Battle, side: 0 | 1, id: string, rng: Rng, ev: Ev[]) {
     b.lastPublic[side] = 'disguise';
   } else if (j.effect === 'damage') {
     ev.push({ t: 'technique', who: side, jutsu: id });
-    attack(b, side, 'jutsu', (j.power ?? 12) + me.stats.Ninjutsu, b.distance === 1 ? 0.8 : 0.68, rng, ev);
+    attack(b, side, 'jutsu', (j.power ?? 12) + me.stats.Ninjutsu, b.distance === 1 ? 0.8 : 0.68, rng, ev, j.onHit);
     b.lastPublic[side] = 'attack';
   }
 }
@@ -288,7 +306,7 @@ function learnTech(f: Fighter, tech: string) {
   if (!f.knowledge.includes(tech)) f.knowledge.push(tech);
 }
 
-function attack(b: Battle, side: 0 | 1, kind: 'taijutsu' | 'kunai' | 'shuriken' | 'jutsu', raw: number, baseHit: number, rng: Rng, ev: Ev[]) {
+function attack(b: Battle, side: 0 | 1, kind: 'taijutsu' | 'kunai' | 'shuriken' | 'jutsu', raw: number, baseHit: number, rng: Rng, ev: Ev[], onHit?: 'chill') {
   const me = b.fighters[side];
   const foe = b.fighters[side === 0 ? 1 : 0];
   let crit = false;
@@ -339,6 +357,10 @@ function attack(b: Battle, side: 0 | 1, kind: 'taijutsu' | 'kunai' | 'shuriken' 
     b.over = { winner: side, reason: 'ko' };
     ev.push({ t: 'end', winner: side, reason: 'ko' });
     return;
+  }
+  if (onHit === 'chill' && !foe.status.defending) {
+    foe.status.chilled = true;
+    ev.push({ t: 'chill', who: foe.side });
   }
   maybeCounter(b, foe, me, kind, rng, ev);
 }

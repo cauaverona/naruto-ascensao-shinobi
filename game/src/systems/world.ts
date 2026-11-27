@@ -4,11 +4,12 @@
 // de existir, o acontecimento não é forçado e uma alternativa coerente assume o lugar dele.
 import type { Campaign } from '../state/campaign';
 import { addLog } from '../state/campaign';
-import { CHARACTERS, CLASSMATES, type Period } from '../data/characters';
-import { AFTERNOON_ACTIONS, EXAM_DAY } from '../data/academy';
+import { CHARACTERS, CLASSMATES, GUY_TEAM, type Period } from '../data/characters';
+import { AFTERNOON_ACTIONS, EXAM_DAY, LESSONS } from '../data/academy';
 import { castChance } from '../data/jutsus';
 import type { Stat } from '../data/stats';
 import { Rng } from '../core/rng';
+import { formGuyTeam } from './team-guy';
 import { bond } from './relations';
 import { restoreAll } from './progression';
 
@@ -157,7 +158,7 @@ export const WORLD_EVENTS: WorldEvent[] = [
     outcomes: { oculto: { apply: (c) => { c.flags['mizuki-oculto'] = true; c.flags['naruto-kage-bunshin'] = false; } } },
   },
   {
-    id: 'formacao-equipes', title: 'Formação das equipes Genin', phase: 'dawn', window: [EXAM_DAY + 1, Infinity], involves: CLASSMATES,
+    id: 'formacao-equipes', title: 'Formação das equipes Genin', phase: 'dawn', window: [EXAM_DAY + 1, Infinity], involves: [...CLASSMATES, ...GUY_TEAM, 'guy'],
     requires: (c) => c.rank === 'Genin' && !f(c, 'equipe'),
     resolve: (c, rng) => {
       const passed = (id: string) => String(c.flags[`exame:${id}`] ?? '').startsWith('aprovado');
@@ -167,8 +168,12 @@ export const WORLD_EVENTS: WorldEvent[] = [
       let members: string[];
       let outcome: string;
       const openingInTeam7 = !passed('naruto') && passed('sasuke') && passed('sakura');
-      const fillTeam7 = openingInTeam7 && !shuffleTeams && (c.settings.fidelity === 'fiel' || rng.chance(0.68));
-      if (fillTeam7) {
+      const guyTeam = formGuyTeam(c, rng);
+      const fillTeam7 = !guyTeam && openingInTeam7 && !shuffleTeams && (c.settings.fidelity === 'fiel' || rng.chance(0.68));
+      if (guyTeam) {
+        members = guyTeam;
+        outcome = 'time-guy';
+      } else if (fillTeam7) {
         members = ['sasuke', 'sakura'];
         c.flags.sensei = 'kakashi';
         outcome = 'jogador-time7';
@@ -198,6 +203,10 @@ export const WORLD_EVENTS: WorldEvent[] = [
         apply: (c) => { bond(c, 'sasuke', { respeito: 5 }); bond(c, 'sakura', { amizade: 3 }); },
         news: (c) => `Sem Naruto entre os formados, Iruka refez a lista. Equipe 7: ${c.profile.name}, Sasuke e Sakura, sob Kakashi Hatake.`,
       },
+      'time-guy': { news: (c) => {
+        const reserve = CHARACTERS[String(c.flags['guy-reserva'])]?.name;
+        return `Guy abriu uma vaga no rodízio do Time 3: ${teamText(c)}.${reserve ? ` ${reserve} continua treinando com o Time Guy e fica na reserva da sua equipe.` : ''}`;
+      } },
       alternativa: { news: (c) => `As equipes mudaram em relação ao planejado. A sua: ${teamText(c)}.` },
     },
   },
@@ -242,6 +251,34 @@ export function periodSchedule(id: string, period: Period) {
 }
 
 // ——— Calendário ———
+export function retakeDay(c: Campaign): number | null {
+  if (c.flags['exame:player'] !== 'reprovado') return null;
+  const date = Number(c.flags.repescagem);
+  return Number.isSafeInteger(date) && date >= EXAM_DAY ? date : c.day;
+}
+
+export function academyMorning(c: Campaign): 'enrollment' | 'lesson' | 'exam' | 'free' {
+  if (c.quest.startsWith('matricula')) return 'enrollment';
+  if (c.rank === 'Genin' || c.lessonsDone.includes(c.day)) return 'free';
+  const retake = retakeDay(c);
+  if (retake !== null) return c.day >= retake ? 'exam' : 'free';
+  if (c.day >= EXAM_DAY) return 'exam';
+  return LESSONS.some((lesson) => lesson.day === c.day) ? 'lesson' : 'free';
+}
+
+const EXTRA_TRAINING = 2;
+
+export function extraTrainingLeft(c: Campaign): number {
+  if (c.period !== 2) return 0;
+  const remaining = c.flags['treinos-extras'];
+  return typeof remaining === 'number' && Number.isInteger(remaining) ? Math.max(0, Math.min(EXTRA_TRAINING, remaining)) : 0;
+}
+
+export function spendExtraTraining(c: Campaign) {
+  const remaining = extraTrainingLeft(c);
+  if (remaining > 0) c.flags['treinos-extras'] = remaining - 1;
+}
+
 export function startAfternoon(c: Campaign) {
   c.period = 1;
   c.actions = AFTERNOON_ACTIONS - (c.flags.limpeza === c.day ? 2 : 0);
@@ -251,7 +288,12 @@ export function startAfternoon(c: Campaign) {
 export function spendAction(c: Campaign): boolean {
   if (c.period !== 1) return false;
   c.actions -= 1;
-  if (c.actions <= 0) { c.period = 2; c.actions = 0; return true; }
+  if (c.actions <= 0) {
+    c.period = 2;
+    c.actions = 0;
+    c.flags['treinos-extras'] = EXTRA_TRAINING;
+    return true;
+  }
   return false;
 }
 
@@ -259,6 +301,7 @@ export function sleep(c: Campaign) {
   c.day += 1;
   c.period = 0;
   c.actions = AFTERNOON_ACTIONS;
+  delete c.flags['treinos-extras'];
   restoreAll(c);
   npcTick(c);
 }

@@ -19,7 +19,7 @@
       <p class="tagline">Da Academia Ninja até virar lenda</p>
     </div>
     <nav class="mainmenu" id="mainmenu" aria-label="Menu principal"></nav>
-    <p class="foot">v0.4.2 · Academia e Vida Genin · Jogo de fã sem fins lucrativos</p>
+    <p class="foot">v0.4.12 · Academia e Vida Genin · Jogo de fã sem fins lucrativos</p>
   </section>
 
   <!-- Seleção de jornada -->
@@ -27,6 +27,7 @@
     <div class="panel wood wide">
       <h2 class="ptitle">Escolha sua jornada</h2>
       <div id="slots" class="slots"></div>
+      <input id="save-file" type="file" accept=".json,application/json" hidden>
       <div class="hint"><button class="ghost" data-back="title">Voltar</button><span id="slot-status" role="status"></span></div>
     </div>
   </section>
@@ -64,12 +65,14 @@
 
   <!-- HUD do jogo -->
   <section id="s-game" class="layer hudlayer" hidden>
-    <div class="hud">
-      <canvas id="hudFace" width="40" height="40" aria-hidden="true"></canvas>
-      <div class="hudinfo"><strong id="who"></strong><span id="rank"></span>
-        <div class="bars" id="bars"></div></div>
+    <div class="hud-summary">
+      <div class="hud">
+        <canvas id="hudFace" width="40" height="40" aria-hidden="true"></canvas>
+        <div class="hudinfo"><strong id="who"></strong><span id="rank"></span>
+          <div class="bars" id="bars"></div></div>
+      </div>
+      <div class="clockbox"><span id="clock"></span><span id="objective"></span></div>
     </div>
-    <div class="clockbox"><span id="clock"></span><span id="objective"></span></div>
     <div class="banner" id="banner" aria-live="polite"><span id="bannerRegion"></span><strong id="bannerName"></strong></div>
     <div class="toast" id="toast" hidden></div>
     <button class="menubtn" id="btnMenu" aria-label="Abrir menu"><i></i><i></i><i></i></button>
@@ -85,7 +88,7 @@
       <div class="vs"><span class="vs-t"></span><strong class="vs-a"></strong><strong class="vs-b"></strong></div>
       <div class="bpanel"><p class="blog" aria-live="polite"></p><div class="cmds"></div></div>
     </div>
-    <div class="mini" id="mini" hidden><p class="mini-title"></p><p class="mini-help"></p><div class="mini-opts"></div><button type="button" id="mini-action" class="mini-action" hidden>A</button></div>
+    <div class="mini" id="mini" hidden><p class="mini-title"></p><p class="mini-help"></p><div class="mini-opts"></div><button type="button" id="mini-action" class="mini-action" hidden>A</button><button type="button" id="mini-cancel" class="mini-cancel" hidden>Interromper treino</button></div>
     <div class="fade" id="fade"></div>
   </section>
 

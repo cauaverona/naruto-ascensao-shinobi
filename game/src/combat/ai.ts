@@ -60,7 +60,7 @@ export function chooseAction(b: Battle, side: 0 | 1, rng: Rng): Action {
         s = -1;
     }
     if (opening === 'pressao' && (action.type === 'advance' || action.type === 'taijutsu') && !lowStamina) s += 0.5;
-    if (opening === 'guarda' && action.type === 'defend' && !me.status.defending && (b.distance === 0 || b.lastPublic[foe.side] === 'attack')) s += 0.85;
+    if (opening === 'guarda' && action.type === 'defend' && b.lastPublic[side] !== 'defend' && (b.distance === 0 || b.lastPublic[foe.side] === 'attack')) s += 0.85;
     if (opening === 'alcance' && (action.type === 'shuriken' || action.type === 'retreat')) s += b.distance === 0 && action.type === 'retreat' ? 0.85 : 0.55;
     if (opening === 'finta' && action.type === 'jutsu' && !me.status.disguised && !me.status.behind) s += action.id === 'henge' ? 0.85 : 0.25;
     return { action, s: s + rng.next() * 0.35 };

@@ -1,14 +1,20 @@
 import { describe, it, expect } from 'vitest';
 import { newCampaign, type Campaign, type Profile } from '../src/state/campaign';
-import { deleteSlot, decode, readSlot, writeSlot, memoryStore, slotKey, LAST_SLOT_KEY } from '../src/state/save';
-import { dueEvents, resolveEvent, sleep, startAfternoon, spendAction, WORLD_EVENTS } from '../src/systems/world';
+import { deleteSlot, decode, importSlot, readSlot, writeSlot, memoryStore, slotKey, LAST_SLOT_KEY } from '../src/state/save';
+import { academyMorning, dueEvents, extraTrainingLeft, resolveEvent, retakeDay, sleep, startAfternoon, spendAction, spendExtraTraining, WORLD_EVENTS } from '../src/systems/world';
 import { train, statCost, applyTraining, learn } from '../src/systems/progression';
 import { PATROL_POSTS, SEAL_CLUES } from '../src/data/genin-assignments';
 import { EXAM_DAY, graduationGrade } from '../src/data/academy';
+import { ACADEMY_STATS, combatPower } from '../src/data/stats';
+import { HYOTON } from '../src/data/jutsus';
+import { trainingFor } from '../src/data/training';
+import { awakenHyoton, yukiTrial } from '../src/systems/heritage';
+import { guyPreference, requestGuyTeam } from '../src/systems/team-guy';
 import { ToraGame } from '../src/scenes/tora';
-import { CLASSMATES } from '../src/data/characters';
+import { GUY_TEAM, CLASSMATES } from '../src/data/characters';
 import {
-  beginGenin, beginPatrol, beginSealCase, checkPatrolPost, collectSupply, combatStats, finishGenin, geninStage,
+  acceptMission, beginGenin, checkPatrolPost, collectSupply, combatStats, deferMission, finishGenin, geninStage,
+  missionDeferred, MISSION_OFFERS, pendingMission, type MissionOffer,
   recordSealClue, reportPatrol, rescueTora, resolveBells, sealCase, senseiId, setToraPlan, settlePatrolDuel,
   solveSealCase, SUPPLIES, teamMembers, toraRoute, toraTactic, turnInSupplies, turnInTora,
 } from '../src/systems/genin';
@@ -24,6 +30,57 @@ const fresh = (fidelity: Campaign['settings']['fidelity'] = 'equilibrado', seed 
 function runDawn(c: Campaign) {
   for (const e of dueEvents(c, 'dawn')) resolveEvent(c, e);
 }
+
+describe('Time Guy', () => {
+  it('disponibiliza os três Genin e Guy para treino na primeira tarde, fora do exame da turma', () => {
+    const c = fresh();
+    for (const id of [...GUY_TEAM, 'guy']) expect(c.npcs[id]).toBeDefined();
+    for (const id of GUY_TEAM) {
+      expect(CLASSMATES).not.toContain(id);
+      expect(c.npcs[id].rank).toBe('Genin');
+    }
+    expect(c.npcs['rock-lee'].jutsus).toEqual({});
+    expect(requestGuyTeam(c, 'rock-lee')).toBe(false);
+    c.quest = 'aula';
+    expect(requestGuyTeam(c, 'sasuke')).toBe(false);
+    expect(requestGuyTeam(c, 'neji')).toBe(true);
+    expect(guyPreference(decode(JSON.stringify(c)))).toBe('neji');
+    expect(requestGuyTeam(c, null)).toBe(true);
+    expect(guyPreference(c)).toBeUndefined();
+  });
+
+  it.each(GUY_TEAM)('garante %s como primeiro parceiro com Guy e seleciona só mais um Genin', (partner) => {
+    const c = fresh('fiel');
+    c.quest = 'aula';
+    expect(requestGuyTeam(c, partner)).toBe(true);
+    c.rank = 'Genin';
+    c.day = EXAM_DAY + 1;
+    runDawn(c);
+    expect(senseiId(c)).toBe('guy');
+    expect(teamMembers(c)).toHaveLength(2);
+    expect(teamMembers(c)[0]).toBe(partner);
+    expect(teamMembers(c)).not.toContain(c.flags['guy-reserva']);
+    expect(c.events['formacao-equipes']).toBe('time-guy');
+    expect(requestGuyTeam(c, null)).toBe(false);
+    expect(beginGenin(c)).toBe(true);
+    expect(resolveBells(c, 0.75, true)).toBe(true);
+    for (const id of teamMembers(c)) expect(c.npcs[id].bond.confianca).toBe(8);
+  });
+
+  it('preserva a equipe de uma jornada antiga e migra os quatro NPCs', () => {
+    const old = fresh();
+    old.version = '0.4.2';
+    old.rank = 'Genin';
+    old.flags.equipe = 'player,ino,shino';
+    old.flags.sensei = 'kurenai';
+    old.flags['academia-concluida'] = true;
+    for (const id of [...GUY_TEAM, 'guy']) delete old.npcs[id];
+    const c = decode(JSON.stringify(old));
+    expect(teamMembers(c)).toEqual(['ino', 'shino']);
+    expect(senseiId(c)).toBe('kurenai');
+    for (const id of [...GUY_TEAM, 'guy']) expect(c.npcs[id]).toBeDefined();
+  });
+});
 
 describe('Vida Genin', () => {
   function graduated(seed: number) {
@@ -63,15 +120,54 @@ describe('Vida Genin', () => {
     expect(geninStage(restored)).toBe('encontro');
   });
 
-  it('persiste as duas missões, impede repetição de recompensa e aplica equipamento só quando equipado', () => {
+  it.each(Object.keys(MISSION_OFFERS) as MissionOffer[])('permite adiar %s e aceitar em outro dia sem perder progresso', (offer) => {
+    const c = graduated(15);
+    c.quest = 'aula';
+    c.flags['genin-etapa'] = offer;
+    const money = c.ryo;
+    expect(deferMission(c, offer)).toBe(true);
+    expect(deferMission(c, offer)).toBe(false);
+    expect(missionDeferred(c)).toBe(true);
+    sleep(c);
+    sleep(c);
+    expect(academyMorning(c)).toBe('free');
+    startAfternoon(c);
+    expect(spendAction(c)).toBe(false);
+    const restored = decode(JSON.stringify(c));
+    expect(restored.actions).toBe(2);
+    expect(restored.ryo).toBe(money);
+    expect(pendingMission(restored)).toBe(offer);
+    expect(missionDeferred(restored)).toBe(true);
+    expect(acceptMission(restored, offer)).toBe(true);
+    expect(geninStage(restored)).toBe(MISSION_OFFERS[offer].active);
+    expect(missionDeferred(restored)).toBe(false);
+    expect(acceptMission(restored, offer)).toBe(false);
+  });
+
+  it.each(['suprimentos', 'busca'] as const)('mantém %s em andamento nos saves antigos', (stage) => {
+    const c = graduated(15);
+    c.version = '0.4.10';
+    c.flags['genin-etapa'] = stage;
+    c.flags[stage === 'suprimentos' ? SUPPLIES[0].id : 'tora-rastro'] = true;
+    const restored = decode(JSON.stringify(c));
+    expect(geninStage(restored)).toBe(stage);
+    expect(pendingMission(restored)).toBeUndefined();
+    expect(restored.flags[stage === 'suprimentos' ? SUPPLIES[0].id : 'tora-rastro']).toBe(true);
+  });
+
+  it('mantém as recompensas únicas e aplica os bônus de combate só enquanto equipados', () => {
     let c = graduated(15);
     expect(beginGenin(c)).toBe(true);
     expect(c.era).toBe('classico');
     expect(resolveBells(c, 0.8, false)).toBe(false);
     expect(resolveBells(c, 0.8, true)).toBe(true);
+    expect(pendingMission(c)).toBe('suprimentos-ordem');
+    expect(collectSupply(c, SUPPLIES[0].id)).toBe(false);
+    expect(acceptMission(c, 'suprimentos-ordem')).toBe(true);
     const money = c.ryo;
     c.flags.equipado = 'luvas';
     expect(combatStats(c).Taijutsu).toBe(c.stats.Taijutsu + 2);
+    expect(combatPower(combatStats(c))).toBe(combatPower(c.stats) + 4);
     expect(collectSupply(c, SUPPLIES[0].id)).toBe(true);
     expect(collectSupply(c, SUPPLIES[0].id)).toBe(false);
     c = decode(JSON.stringify(c));
@@ -79,12 +175,15 @@ describe('Vida Genin', () => {
     for (const supply of SUPPLIES.slice(1)) expect(collectSupply(c, supply.id)).toBe(true);
     expect(turnInSupplies(c)).toBe(true);
     expect(turnInSupplies(c)).toBe(false);
+    expect(pendingMission(c)).toBe('tora-ordem');
+    expect(rescueTora(c)).toBe(false);
+    expect(acceptMission(c, 'tora-ordem')).toBe(true);
     expect(rescueTora(c)).toBe(true);
     expect(turnInTora(c)).toBe(true);
     expect(turnInTora(c)).toBe(false);
     expect(c.ryo).toBe(money + 190);
     expect(finishGenin(c, 'investigar')).toBe(false);
-    expect(beginSealCase(c)).toBe(true);
+    expect(acceptMission(c, 'selo-ordem')).toBe(true);
     const solution = sealCase(c).destination;
     expect(solveSealCase(c, solution)).toBe(false);
     expect(recordSealClue(c, SEAL_CLUES[0].id)).toBe(true);
@@ -94,7 +193,7 @@ describe('Vida Genin', () => {
     expect(solveSealCase(c, 'errado')).toBe(false);
     expect(solveSealCase(c, solution)).toBe(true);
     expect(solveSealCase(c, solution)).toBe(false);
-    expect(beginPatrol(c)).toBe(true);
+    expect(acceptMission(c, 'patrulha-ordem')).toBe(true);
     expect(checkPatrolPost(c, PATROL_POSTS[1].id)).toBe(false);
     expect(settlePatrolDuel(c, true)).toBe(false);
     for (const post of PATROL_POSTS) expect(checkPatrolPost(c, post.id)).toBe(true);
@@ -119,16 +218,55 @@ describe('polimento da campanha', () => {
     const c = decode(JSON.stringify(original));
     expect(c.npcs.maki).toBeDefined();
     expect(geninStage(c)).toBe('selo-ordem');
-    expect(beginSealCase(c)).toBe(true);
+    expect(acceptMission(c, 'selo-ordem')).toBe(true);
     for (const clue of SEAL_CLUES) recordSealClue(c, clue.id);
     expect(solveSealCase(c, sealCase(c).destination)).toBe(true);
-    expect(beginPatrol(c)).toBe(true);
+    expect(acceptMission(c, 'patrulha-ordem')).toBe(true);
     for (const post of PATROL_POSTS) checkPatrolPost(c, post.id);
     expect(settlePatrolDuel(c, true)).toBe(true);
     expect(reportPatrol(c)).toBe(true);
     expect(geninStage(c)).toBe('concluida');
     expect(c.flags['ondas-postura']).toBe('aceitar');
   });
+  it('reabre o treino nos dias 11 e 12 em um save antigo reprovado e oferece a repescagem no dia 13', () => {
+    const old = fresh();
+    old.version = '0.4.4'; old.day = EXAM_DAY + 1; old.quest = 'aula';
+    old.lessonsDone.push(EXAM_DAY);
+    Object.assign(old.flags, { 'exame:player': 'reprovado', repescagem: EXAM_DAY + 3 });
+    const c = decode(JSON.stringify(old));
+    for (const day of [11, 12]) {
+      expect(c.day).toBe(day);
+      expect(academyMorning(c)).toBe('free');
+      startAfternoon(c);
+      expect(c.actions).toBe(3);
+      expect(spendAction(c)).toBe(false);
+      sleep(c);
+    }
+    expect(retakeDay(c)).toBe(13);
+    expect(academyMorning(c)).toBe('exam');
+    delete c.flags.repescagem;
+    expect(academyMorning(c)).toBe('exam');
+  });
+
+  it('abre dois treinos extras só depois da última ação, persiste no save e zera ao dormir', () => {
+    const c = fresh();
+    startAfternoon(c);
+    expect(extraTrainingLeft(c)).toBe(0);
+    while (c.period === 1) spendAction(c);
+    expect(c.actions).toBe(0);
+    expect(extraTrainingLeft(c)).toBe(2);
+    const resumed = decode(JSON.stringify(c));
+    spendExtraTraining(resumed);
+    expect(extraTrainingLeft(resumed)).toBe(1);
+    spendExtraTraining(resumed);
+    spendExtraTraining(resumed);
+    expect(extraTrainingLeft(resumed)).toBe(0);
+    expect(resumed.period).toBe(2);
+    sleep(resumed);
+    expect(resumed.flags['treinos-extras']).toBeUndefined();
+    expect(resumed.actions).toBe(3);
+  });
+
   it('equilibra o exame pelas ações do jogador e exige que se aprenda Bunshin', () => {
     expect(graduationGrade(24, 0.9, 1, 3).pass).toBe(true);
     expect(graduationGrade(0, 1, 1, 10).pass).toBe(false);
@@ -200,6 +338,44 @@ describe('salvamento', () => {
     expect(r.kind).toBe('ok');
     if (r.kind === 'ok') expect(r.campaign).toEqual(c);
   });
+  it('transfere a jornada para outro armazenamento e preserva inventário, equipe e objetivo', () => {
+    const source = memoryStore();
+    const target = memoryStore();
+    const c = fresh('equilibrado', 15);
+    c.rank = 'Genin';
+    Object.assign(c.flags, { 'academia-concluida': true, equipe: 'kiba,hinata', sensei: 'kurenai' });
+    c.inventory.shuriken = 2;
+    c.flags['genin-etapa'] = 'suprimentos';
+    const exported = writeSlot(source, 0, c, null);
+    expect(exported.ok).toBe(true);
+    if (!exported.ok) return;
+    expect(importSlot(target, 1, exported.raw).ok).toBe(true);
+    const imported = readSlot(target, 1);
+    expect(imported.kind).toBe('ok');
+    if (imported.kind === 'ok') {
+      expect(imported.campaign.inventory.shuriken).toBe(2);
+      expect(teamMembers(imported.campaign)).toEqual(teamMembers(c));
+      expect(geninStage(imported.campaign)).toBe('suprimentos');
+    }
+    expect(readSlot(target, 0).kind).toBe('empty');
+    expect(importSlot(target, 1, JSON.stringify(fresh()))).toEqual({ ok: false, reason: 'conflict' });
+    expect(readSlot(target, 1)).toEqual(imported);
+  });
+
+  it('recusa arquivos inválidos antes de salvar e aceita o formato original da v0.2', () => {
+    const store = memoryStore();
+    const { stats, profile } = fresh();
+    for (const raw of ['{', JSON.stringify({ ...fresh(), jutsus: null }), JSON.stringify({ ...fresh(), map: 'desconhecido' })]) {
+      expect(importSlot(store, 0, raw)).toEqual({ ok: false, reason: 'invalid' });
+      expect(readSlot(store, 0).kind).toBe('empty');
+    }
+    const raw = JSON.stringify({ schema: 2, profile, stats, day: 2, step: 2 });
+    expect(importSlot(store, 0, raw).ok).toBe(true);
+    const info = readSlot(store, 0);
+    expect(info.kind).toBe('ok');
+    if (info.kind === 'ok') expect(info.campaign.quest).toBe('aula');
+  });
+
   it('recusa gravar quando outra aba alterou o slot', () => {
     const s = memoryStore(), c = fresh();
     writeSlot(s, 0, c, null);
@@ -244,6 +420,20 @@ describe('salvamento', () => {
     expect(deleteSlot(s, 0, saved.raw)).toEqual({ ok: false, reason: 'conflict' });
     expect(decode(s.getItem(slotKey(0))!).day).toBe(4);
   });
+  it('migra a bandana da campanha e preserva a posição escolhida ao recarregar', () => {
+    const old = fresh();
+    delete old.profile.bandPosition;
+    expect(decode(JSON.stringify(old)).profile.bandPosition).toBe('testa');
+    old.profile.bandAtWaist = true;
+    expect(decode(JSON.stringify(old)).profile.bandPosition).toBe('cintura');
+    const c = fresh();
+    for (const position of ['testa', 'pescoco', 'braco', 'cintura', 'guardada'] as const) {
+      c.profile.bandPosition = position;
+      expect(decode(JSON.stringify(c)).profile.bandPosition).toBe(position);
+    }
+    expect(decode(JSON.stringify({ ...c, profile: { ...c.profile, bandPosition: 'invalida' } })).profile.bandPosition).toBe('testa');
+  });
+
   it('dá o visual padrão a saves antigos e mantém a personalização escolhida', () => {
     const old = { ...fresh(), profile: { ...profile } };
     expect(decode(JSON.stringify(old)).profile).toMatchObject({
@@ -251,6 +441,46 @@ describe('salvamento', () => {
     });
     const custom = { ...old, profile: { ...profile, outfit: 'Colete de campo', scarf: 'Sem cachecol', accessoryTone: 'Jade' } };
     expect(decode(JSON.stringify(custom)).profile).toMatchObject(custom.profile);
+  });
+});
+
+describe('treinos e herança de clã', () => {
+  it('oferece um treino com ganho para cada atributo exibido na ficha', () => {
+    const c = fresh();
+    for (const stat of ACADEMY_STATS) {
+      const drill = trainingFor(stat);
+      expect(drill?.stats).toContain(stat);
+      if (!drill) continue;
+      const before = c.statXp[stat] + c.stats[stat];
+      applyTraining(c, drill.stats, 0.75);
+      expect(c.statXp[stat] + c.stats[stat]).toBeGreaterThan(before);
+    }
+  });
+
+  it('encerra a Vida Genin antes de oferecer a prova de gelo, exige domínio e guarda a afinidade', () => {
+    const c = fresh();
+    c.profile.clan = 'Yuki';
+    c.profile.element = 'Relâmpago';
+    expect(yukiTrial(c).state).toBe('story');
+    expect(awakenHyoton(c, 1)).toBe(false);
+    c.rank = 'Genin'; c.era = 'classico';
+    Object.assign(c.flags, { 'academia-concluida': true, 'genin-etapa': 'ondas', 'patrulha-concluida': true });
+    expect(awakenHyoton(c, 1)).toBe(false);
+    c.flags['genin-etapa'] = 'concluida';
+    c.stats.Ninjutsu = 2;
+    expect(yukiTrial(c).state).toBe('stats');
+    c.stats.Ninjutsu = 4; c.stats['Controle de chakra'] = 5;
+    expect(yukiTrial(c).state).toBe('ready');
+    expect(awakenHyoton(c, 0.59)).toBe(false);
+    expect(awakenHyoton(c, 0.6)).toBe(true);
+    const saved = decode(JSON.stringify(c));
+    expect(saved.profile.element).toBe('Relâmpago');
+    expect(saved.jutsus[HYOTON]).toBe(31);
+    expect(yukiTrial(saved).state).toBe('known');
+    expect(awakenHyoton(saved, 1)).toBe(false);
+    const other = fresh();
+    Object.assign(other, { rank: c.rank, era: c.era, flags: c.flags, stats: c.stats });
+    expect(awakenHyoton(other, 1)).toBe(false);
   });
 });
 

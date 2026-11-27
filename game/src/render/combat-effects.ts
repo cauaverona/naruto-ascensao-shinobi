@@ -1,6 +1,6 @@
 import { px } from './gfx';
 
-export type EffectKind = 'impact' | 'smoke' | 'log' | 'chakra' | 'guard' | 'fizzle' | 'slash' | 'fire';
+export type EffectKind = 'impact' | 'smoke' | 'log' | 'chakra' | 'guard' | 'fizzle' | 'slash' | 'fire' | 'ice' | 'frost';
 export interface CombatEffect {
   kind: EffectKind;
   side: number;
@@ -27,6 +27,15 @@ export function drawCombatEffect(g: CanvasRenderingContext2D, effect: CombatEffe
     pixel(3, -12 - lift, 6, 9, '#dab37e');
     pixel(4, -10 - lift, 3, 5, '#906244');
     pixel(-5, -10 - lift, 8, 1, '#e1a770');
+  } else if (kind === 'ice' || kind === 'frost') {
+    const travel = kind === 'ice';
+    for (let i = 0; i < (travel ? 5 : 9); i++) {
+      const dx = travel ? -i * 4 * facing : Math.cos(i * 2.399) * (4 + ramp * (reduced ? 6 : 16));
+      const dy = travel ? -27 + Math.sin(i * 2.1) * 7 : -18 + Math.sin(i * 2.399) * ramp * 14;
+      pixel(dx, dy, travel ? 8 : 4, 2, '#75b6db');
+      pixel(dx + (travel ? 3 * facing : 1), dy - 2, travel ? 4 : 2, 2, '#b4e4f0');
+      pixel(dx + (travel ? 4 * facing : 1), dy - 3, 2, 1, '#effbfc');
+    }
   } else if (kind === 'fire') {
     const lead = (1 - t) * 9 * facing;
     for (let i = 0; i < 14; i++) {

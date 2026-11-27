@@ -12,7 +12,7 @@ export function talk(c: Campaign, id: string): string[] {
     case 'iruka':
       if (c.quest === 'matricula-ficha') return [`Bom dia! Você é ${name}, o aluno novo? A ficha de matrícula fica no quadro de avisos, ali perto da escada.`, 'Traga preenchida e eu coloco seu nome na lista.'];
       if (c.day >= EXAM_DAY - 1 && !examDone) return ['O exame de graduação está chegando. A prova prática é o Bunshin no Jutsu.', 'Durma cedo. Um shinobi cansado erra os selos mais simples.'];
-      if (c.period === 1) return ['Tarde livre não é tarde perdida. O Campo de Treino fica a oeste, seguindo a rua.', b.respeito > 10 ? 'Tenho reparado no seu esforço. Continue assim.' : 'Os troncos, os alvos e a pedra perto do lago: cada um treina uma coisa diferente.'];
+      if (c.period === 1) return ['Tarde livre não é tarde perdida. O Campo de Treino fica a oeste, seguindo a rua.', b.respeito > 10 ? 'Tenho reparado no seu esforço. Continue assim.' : 'No Campo tem um circuito para treinar o corpo e uma mesa para estudar tática, ilusões e moldagem de chakra. Para praticar jutsus aprendidos, use o posto de selos.'];
       return [`Nos vemos na aula, ${name}.`];
     case 'naruto':
       if (c.events['pegadinha-monumento'] === 'evitada' && c.day <= 8) return ['...', 'Hmpf. Alguém contou para o Iruka-sensei. Eu ia fazer a pegadinha mais lendária da história.'];
@@ -43,6 +43,13 @@ export function talk(c: Campaign, id: string): string[] {
     case 'kiba': return [b.rivalidade >= 15 ? 'Você ganhou daquela vez. Eu e o Akamaru já sabemos como empatar.' : 'O Akamaru percebeu você antes de eu ouvir seus passos. Quer apostar corrida?'];
     case 'hinata': return [b.confianca >= 10 ? 'Eu consegui sustentar a postura durante todo o treino. Obrigada por me incentivar.' : 'Eu estou treinando a postura. Se eu respirar devagar, consigo me concentrar.'];
     case 'shino': return [b.respeito >= 10 ? 'Você também observa antes de avançar. É uma boa maneira de se manter em segurança.' : 'A trilha muda depois da chuva. Observe as marcas no chão antes de seguir.'];
+    case 'rock-lee': return [b.respeito >= 10 ? 'Seu equilíbrio melhorou. Vamos treinar a troca de apoio mais uma vez!' :
+      'Pode me chamar de Lee! Eu venho aos troncos todo dia para treinar taijutsu. Quer praticar comigo?'];
+    case 'neji': return [b.confianca >= 10 ? 'Você confia na sua leitura. Agora espere um instante a mais antes de responder.' :
+      'Repare onde você põe o pé. Dá para prever muita coisa só pela maneira como alguém se aproxima.'];
+    case 'tenten': return [b.amizade >= 15 ? 'Guardei um alvo extra. Vamos marcar quem acerta sem sair do lugar?' :
+      'Deixa um espaço perto dos alvos. Estou comparando o alcance de kunai e shuriken.'];
+    case 'guy': return ['Mais uma volta pelo campo. Garanta que o último colega chegue junto.'];
     case 'kakashi': return ['Antes de sair da vila, confira onde estão seus companheiros.'];
     case 'asuma': return ['Quando alguém da equipe perde o ritmo, ajuste o seu. Cheguem juntos.'];
     case 'kurenai': return ['A primeira impressão pode enganar. Olhe de novo antes de tomar uma decisão.'];

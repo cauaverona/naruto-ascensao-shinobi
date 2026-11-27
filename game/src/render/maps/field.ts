@@ -42,6 +42,51 @@ function standArt() {
   return c;
 }
 
+function practiceStandArt() {
+  const c = offscreen(34, 24), g = ctx(c);
+  px(g, 1, 21, 32, 2, '#9c794f');
+  for (const x of [6, 25]) {
+    px(g, x, 12, 3, 10, '#60452f');
+    px(g, x, 12, 1, 10, '#8c6340');
+  }
+  px(g, 2, 9, 30, 5, '#765037');
+  px(g, 2, 9, 30, 2, '#b78c54');
+  px(g, 6, 3, 22, 8, '#9d674a');
+  px(g, 26, 3, 4, 6, '#6e4d33'); px(g, 27, 4, 2, 4, '#f8c96b');
+  px(g, 8, 4, 18, 6, '#eddbad');
+  for (const x of [12, 16, 20]) px(g, x, 6, 2, 2, '#8e5948');
+  return c;
+}
+
+function studyDeskArt() {
+  const c = offscreen(38, 26), g = ctx(c);
+  px(g, 1, 23, 36, 2, '#a08056');
+  for (const x of [6, 28]) {
+    px(g, x, 12, 4, 12, '#65492f');
+    px(g, x, 12, 1, 12, '#ae8052');
+  }
+  px(g, 3, 9, 32, 6, '#7f5638');
+  px(g, 3, 8, 32, 3, '#c29861');
+  px(g, 5, 5, 20, 5, '#eee0b1');
+  px(g, 7, 6, 14, 1, '#b19770');
+  px(g, 7, 8, 10, 1, '#aa8763');
+  px(g, 15, 5, 1, 5, '#927656');
+  px(g, 28, 4, 5, 6, '#5b4242');
+  px(g, 29, 4, 4, 2, '#bf7453');
+  return c;
+}
+
+function courseStakeArt() {
+  const c = offscreen(12, 22), g = ctx(c);
+  px(g, 1, 20, 9, 2, '#a17f56');
+  px(g, 3, 3, 2, 18, '#65482f');
+  px(g, 5, 3, 1, 16, '#ac814d');
+  px(g, 4, 3, 7, 5, '#8b3e39');
+  px(g, 5, 3, 6, 1, '#d57356');
+  px(g, 5, 6, 4, 1, '#f5d5a9');
+  return c;
+}
+
 export function buildField(): GameMap {
   const ground = offscreen(W, H), gd = ctx(ground), mb = new MapBuilder(), T = tiles();
   const r = makeRandom(4412);
@@ -74,7 +119,11 @@ export function buildField(): GameMap {
   for (const x of [180, 212, 244]) { mb.item(x, 228, logArt()); mb.wall(x - 6, 224, 12, 5); }
   for (const y of [170, 202]) { mb.item(470, y, targetArt()); mb.wall(465, y - 4, 10, 5); }
   mb.item(470, 236, standArt()); mb.wall(456, 232, 28, 5);
+  mb.item(300, 183, practiceStandArt()); mb.wall(286, 176, 28, 7);
   mb.item(132, 314, rockArt()); mb.wall(117, 306, 30, 8);
+  mb.item(417, 272, studyDeskArt()); mb.wall(401, 266, 32, 7);
+  for (const [x, y] of [[192, 353], [222, 346], [251, 351]]) mb.item(x, y, courseStakeArt());
+  for (let x = 195; x <= 250; x += 5) px(gd, x, 357, 3, 1, '#b99264');
   mb.item(420, 140, fenceArt(120, 'wood')); mb.wall(360, 137, 120, 4);
 
   treeImgs.forEach((img, slot) => img.addEventListener('load', () => { for (const t of mb.things) if (t.img === trees[slot]) t.img = img; }));
@@ -82,12 +131,14 @@ export function buildField(): GameMap {
 
   return {
     id: 'campo', name: 'Campo de Treino', region: 'Konohagakure · Arredores da Academia', w: W, h: H, ground,
-    things: mb.things, walls: mb.walls, bounds: { x: 30, y: 104, w: W - 44, h: H - 120 }, lights: [],
+    things: mb.things, walls: mb.walls, bounds: { x: 30, y: 104, w: W - 44, h: H - 120 }, lights: [{ x: 311, y: 165, r: 38 }, { x: 430, y: 257, r: 27 }],
     spots: [
       { id: 'troncos', x: 212, y: 244, r: 26, label: 'Troncos de treino' },
       { id: 'alvos', x: 440, y: 196, r: 26, label: 'Alvos de arremesso' },
       { id: 'meditacao', x: 132, y: 330, r: 22, label: 'Pedra de meditação' },
-      { id: 'selos', x: 300, y: 196, r: 18, label: 'Praticar técnicas' },
+      { id: 'selos', x: 300, y: 196, r: 18, label: 'Posto de treino de jutsus' },
+      { id: 'circuito', x: 222, y: 363, r: 23, label: 'Circuito de treino' },
+      { id: 'estudo', x: 417, y: 286, r: 20, label: 'Mesa de estudos' },
     ],
     exits: [{ rect: { x: W - 30, y: 216, w: 30, h: 48 }, to: 'rua', arrive: { x: 34, y: 248, dir: 'right' }, label: 'Rua da Academia' }],
   };

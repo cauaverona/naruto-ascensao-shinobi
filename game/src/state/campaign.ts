@@ -1,7 +1,7 @@
 // Estado completo de uma campanha. Tudo aqui é serializável e versionado (schema).
 import { baseStats, maxVitals, type StatBlock, type Stat, type Rank } from '../data/stats';
 import { CHARACTERS, type Look, type MapId, type Period } from '../data/characters';
-import { WARDROBE_DEFAULTS } from '../data/appearance';
+import { bandPositionOf, WARDROBE_DEFAULTS } from '../data/appearance';
 import { clanByName, CLANS, VILLAGES, PASTS, TALENTS, ATTRIBUTE_PICKS } from '../data/clans';
 import { ELEMENTS } from '../data/stats';
 import type { EraId } from '../data/academy';
@@ -10,7 +10,7 @@ import { Rng } from '../core/rng';
 export const SCHEMA = 3;
 /** Porta de casa, na casa vermelha do sul da Rua da Academia. */
 export const HOME_SPOT = { x: 117, y: 437 };
-export const GAME_VERSION = '0.4.2';
+export const GAME_VERSION = '0.4.12';
 
 export interface Profile extends Look {
   name: string; sex: string; village: string; clan: string; element: string;
@@ -120,7 +120,7 @@ export function rollOrigin(p: Profile, rng: Rng) {
 
 export function newCampaign(input: Profile, settings: Settings, seed: number): Campaign {
   const rng = new Rng(seed);
-  const p = { ...LOOK_DEFAULTS, ...input };
+  const p = { ...LOOK_DEFAULTS, ...input, bandPosition: bandPositionOf(input) };
   rollOrigin(p, rng);
   const stats = baseStats(2);
   const add = (k: string, v: number) => { if (k in stats) stats[k as Stat] += v; };

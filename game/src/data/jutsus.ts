@@ -25,11 +25,15 @@ export interface Jutsu {
   range: [number, number];
   effect: CombatEffect;
   power?: number;
+  visual?: 'ice';
+  onHit?: 'chill';
   /** Atributo que treina com o uso. */
   trains: Stat[];
   evolvesTo?: string[];
   description: string;
 }
+
+export const HYOTON = 'hyoton';
 
 export const JUTSUS: Record<string, Jutsu> = {
   henge: {
@@ -56,6 +60,13 @@ export const JUTSUS: Record<string, Jutsu> = {
     acquisition: 'Pergaminho proibido de Konoha', requirements: { Chakra: 12 }, chakraCost: 18, staminaCost: 0, range: [0, 2], effect: 'clones',
     trains: ['Ninjutsu', 'Chakra'], evolvesTo: ['tajuu-kage-bunshin'],
     description: 'Forma mais cópias que o Bunshin comum e exige muito mais chakra.',
+  },
+  [HYOTON]: {
+    id: HYOTON, name: 'Hyōton: Estilhaços de Gelo', meaning: 'Liberação de Gelo', category: 'Ninjutsu', rank: 'C', clan: 'Yuki', era: 'classico',
+    acquisition: 'Caderno da família Yuki, na Pedra de meditação após a Vida Genin', requirements: { 'Controle de chakra': 5, Ninjutsu: 4 },
+    chakraCost: 11, staminaCost: 0, range: [1, 2], effect: 'damage', power: 12, visual: 'ice', onHit: 'chill',
+    trains: ['Ninjutsu', 'Controle de chakra'],
+    description: 'Lança gelo a média ou longa distância. Um acerto fora da guarda reduz a iniciativa do alvo em 2 na próxima rodada.',
   },
   gokakyu: {
     id: 'gokakyu', name: 'Katon: Gōkakyū no Jutsu', meaning: 'Grande Bola de Fogo', category: 'Ninjutsu', rank: 'C', element: 'Fogo', era: 'classico',

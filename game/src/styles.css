@@ -74,8 +74,10 @@ button:disabled{opacity:.45;cursor:default}
 .slot strong{font-size:22px;line-height:1;overflow-wrap:anywhere}
 .slot span{font-size:14px;color:var(--ink-soft)}
 .slot.empty strong{color:var(--ink-soft)}
-.slot-delete{justify-self:end;color:#853426;min-height:38px;font-size:14px}
-.slot-delete[aria-current=true],.slot-delete:focus-visible{outline:2px solid var(--fire);outline-offset:1px}
+.slot-actions{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:6px}
+.slot-actions button{min-height:38px;font-size:14px}
+.slot-delete{color:#853426}
+.slot-actions button[aria-current=true],.slot-actions button:focus-visible{outline:2px solid var(--fire);outline-offset:1px}
 .hint{display:flex;align-items:center;gap:14px;margin-top:16px;font-size:14px;color:var(--ink-soft);flex-wrap:wrap}
 .save-dialog{margin:auto;width:min(430px,calc(100% - 32px));padding:22px;color:var(--ink)}
 .save-dialog::backdrop{background:#171910b8}
@@ -120,6 +122,7 @@ button:disabled{opacity:.45;cursor:default}
 
 /* ——— HUD ——— */
 .hudlayer{pointer-events:none}
+.hud-summary{display:contents}
 .hudlayer button,.hudlayer .dialogue,.hudlayer .touch{pointer-events:auto}
 .hud{position:absolute;left:max(12px,env(safe-area-inset-left));top:max(12px,env(safe-area-inset-top));display:flex;gap:10px;align-items:center;padding:8px 12px 8px 8px;
   background:rgba(23,32,34,.86);border:3px solid var(--wood-dark);box-shadow:inset 0 0 0 2px var(--wood);border-radius:3px}
@@ -192,11 +195,19 @@ button:disabled{opacity:.45;cursor:default}
 .mtabs button{cursor:pointer;background:var(--paper2);border:3px solid var(--paper3);border-bottom:0;padding:6px 12px;color:var(--ink-soft);border-radius:2px 2px 0 0;font-size:16px}
 .mtabs button[aria-selected=true]{background:#fffaf0;color:var(--fire);border-color:var(--wood-light)}
 .tabbody{padding:14px 18px 20px;overflow:auto;max-height:66vh;font-size:16px;background:#fffaf0;margin:0 6px 6px}
+.agenda-actions{margin-top:8px}
 .tabbody h3{font-size:19px;color:var(--fire);margin:14px 0 6px}
 .tabbody .muted{color:var(--ink-soft);font-size:15px;line-height:1.4}
 .grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:4px 20px}
 .row{display:flex;justify-content:space-between;gap:10px;border-bottom:2px dotted var(--paper3);padding:4px 0}
 .row b{font-variant-numeric:tabular-nums}
+.bandana-picker{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px;margin-top:12px;padding:8px 12px;background:#efe2c1;border:2px solid var(--paper3)}
+.bandana-controls{display:grid;gap:5px;min-width:min(180px,100%)}
+.bandana-controls label{font-weight:700}
+.bandana-controls select{min-height:38px;padding:4px 8px;font:inherit;color:var(--ink);background:#fff8e6;border:2px solid var(--wood-light)}
+.bandana-controls select:focus-visible{outline:2px solid var(--fire);outline-offset:2px}
+.bandana-picker canvas{display:block;width:160px;max-width:100%;height:auto;image-rendering:pixelated;border:1px solid var(--paper3);background:#d9ccac}
+.stat-training{display:block;margin-top:3px;font-size:.86em;color:var(--ink-soft)}
 .bar-mini{height:6px;background:var(--paper2);overflow:hidden;margin:2px 0 6px}.bar-mini i{display:block;height:100%;background:var(--fire)}
 .entry{padding:8px 0;border-bottom:2px dotted var(--paper3)}
 .entry:last-child{border-bottom:0}
@@ -204,6 +215,52 @@ button:disabled{opacity:.45;cursor:default}
 .tabbody ::-webkit-scrollbar,.create::-webkit-scrollbar{width:10px}
 .tabbody ::-webkit-scrollbar-thumb,.create::-webkit-scrollbar-thumb{background:var(--wood-light)}
 .tabbody{scrollbar-color:var(--wood-light) var(--paper2)}
+
+/* ——— Mapa de Konoha ——— */
+.atlas-areas{display:flex;gap:5px;flex-wrap:wrap;padding:5px;background:#e4d3ad;border:2px solid #ba9666;margin-bottom:12px}
+.atlas-areas button,.atlas-go{cursor:pointer;text-align:left;border:2px solid #b99968;background:#f5e7c9;color:#57442f;padding:5px 10px;min-height:34px}
+.atlas-areas button[aria-pressed=true]{background:#354841;border-color:#324239;color:#fff1c9;box-shadow:inset 0 -2px #7a946c}
+.atlas-areas button:focus-visible,.atlas-go:focus-visible,.atlas-point:focus-visible{outline-color:#995a3a;outline-offset:1px}
+.atlas-heading{display:flex;flex-wrap:wrap;justify-content:space-between;gap:1px 12px;align-items:baseline;margin-bottom:7px}
+.tabbody .atlas-heading h3{margin:0;color:#513a2a;font-size:22px}
+.atlas-heading p{color:#715840;font-size:14px}
+.atlas-layout{display:grid;grid-template-columns:minmax(0,2.25fr) minmax(178px,1fr);gap:12px;align-items:start}
+.atlas-art,.atlas-panel{min-width:0}
+.atlas-board{position:relative;border:3px solid #523a29;outline:1px solid #c19861;background:#3f5039;padding:0}
+.atlas-board canvas{display:block;width:100%;height:auto;image-rendering:pixelated}
+.atlas-legend{display:flex;flex-wrap:wrap;gap:4px 13px;padding:8px 2px 0;color:#654d37;font-size:14px}
+.atlas-legend span,.atlas-point{display:flex;align-items:center;gap:7px}
+.atlas-key,.atlas-pin span{display:block;width:11px;height:11px;flex:none;background:var(--marker);border:2px solid #302b24}
+.atlas-player{--marker:#fff7e0}.atlas-objective{--marker:#f8cf68}.atlas-exit{--marker:#8fd3e4}
+.atlas-key.atlas-place,.atlas-pin.atlas-place{--marker:#e7dda8}.atlas-mission{--marker:#e49ca4}
+.atlas-key.atlas-objective,.atlas-pin.atlas-objective span{transform:rotate(45deg)}
+.atlas-key.atlas-player,.atlas-pin.atlas-player span{border-radius:50%;border:2px solid #473824}
+.atlas-key.atlas-mission,.atlas-pin.atlas-mission span{border-radius:2px 6px 6px 2px}
+.atlas-pin{position:absolute;display:grid;place-items:center;width:32px;height:32px;padding:0;transform:translate(-50%,-50%);cursor:pointer;border:0;background:none;z-index:1}
+.atlas-pin span{width:14px;height:14px;box-shadow:0 1px 0 #1c2825,0 0 0 1px #fff1c9}
+.atlas-pin.atlas-objective{z-index:2}.atlas-pin.atlas-player{z-index:3}
+.atlas-pin.is-active,.atlas-pin:hover,.atlas-pin:focus-visible{z-index:4}
+.atlas-pin.is-active span,.atlas-pin:hover span,.atlas-pin:focus-visible span{box-shadow:0 0 0 3px #fff1c9,0 0 0 5px #453626}
+.atlas-detail{padding:6px 8px;border-left:3px solid #926544;margin:7px 0 0;color:#514230;background:#f0e2bf;font-size:14px}
+.atlas-detail:empty{margin:0;padding:0;border:0}
+.atlas-panel{border:2px solid #c4a472;background:#f4e8ce;padding:9px}
+.atlas-goal{background:#ead7a7;border-left:3px solid #a87a42;padding:7px 8px;margin-bottom:8px;color:#503925}
+.atlas-goal strong,.atlas-panel h4{font-size:15px}
+.atlas-goal p{font-size:14px;line-height:1.3;overflow-wrap:anywhere;margin-top:2px}
+.atlas-go{font-size:13px;margin-top:5px;padding:4px 7px;min-height:30px}
+.atlas-panel h4{margin:0 0 3px;color:#654a32}
+.atlas-places{display:grid;gap:3px}
+.atlas-places .atlas-point{width:100%;min-height:29px;cursor:pointer;text-align:left;line-height:1.2;color:#4e3b2c;border:1px solid #d5bd91;background:#fbf1db;font-size:14px;padding:5px 6px;overflow-wrap:anywhere}
+.atlas-places .atlas-point:hover,.atlas-places .atlas-point[aria-pressed=true]{background:#ead2a0;border-color:#a57a4c}
+.atlas-point b{margin-left:auto;color:#3d6467}
+@media(max-width:650px){
+  .atlas-layout{grid-template-columns:minmax(0,1fr)}
+  .atlas-areas button{min-height:42px;flex:1 1 auto}
+  .atlas-places{grid-template-columns:repeat(auto-fit,minmax(125px,1fr))}
+  .atlas-places .atlas-point,.atlas-go{min-height:38px}
+  .menu:has(.atlas-area) .menuhead .ghost{flex:0 0 auto;width:92px;padding:6px 8px;font-size:14px;line-height:1.15}
+}
+
 
 /* ——— Telas estreitas ——— */
 @media (max-width:760px){
@@ -217,7 +274,7 @@ button:disabled{opacity:.45;cursor:default}
   .look-choice,.swatch{min-height:44px}
   .swatch{width:43px}
   .hud{padding:5px 8px 5px 5px;gap:6px}.hud canvas{width:36px;height:36px}.hudinfo{min-width:118px}
-  .clockbox{right:62px;max-width:44vw}#clock{font-size:12px}#objective{font-size:12px;padding:4px 7px}
+  #clock{font-size:12px}#objective{font-size:12px;padding:4px 7px}
   .dialogue{padding:10px;min-height:0}.dialogue canvas{width:52px;height:52px}.dtext p,.choices button{font-size:16px}.dtext b{font-size:16px}
   .logo{column-gap:12px}
 }
@@ -257,6 +314,8 @@ button:disabled{opacity:.45;cursor:default}
 .mini-action{font:inherit;font-weight:700;margin-top:8px;min-height:42px;padding:5px 16px;cursor:pointer;touch-action:none;color:#fff4d3;background:#694b3a;border:2px solid var(--wood-dark);box-shadow:inset 0 2px #aa7d52}
 .mini-action:focus-visible,.mini-action:active{outline:2px solid var(--fire);outline-offset:2px}
 .mini-action:disabled{opacity:.55}
+.mini-cancel{font:inherit;font-size:14px;margin:8px 0 0 8px;min-height:42px;padding:5px 12px;cursor:pointer;color:var(--ink);background:var(--paper2);border:2px solid var(--wood)}
+.mini-cancel:focus-visible,.mini-cancel:hover{outline:2px solid var(--fire);outline-offset:1px}
 .mini-opts{display:flex;justify-content:center;gap:8px;margin-top:10px;flex-wrap:wrap}
 .mini-opts:empty{display:none}
 .mini-opts button{cursor:pointer;min-width:84px;display:grid;justify-items:center;background:#fffaf0;border:3px solid var(--paper3);border-radius:2px;padding:6px 10px;color:var(--ink)}
@@ -274,7 +333,8 @@ button:disabled{opacity:.45;cursor:default}
   .foot{bottom:max(18px,env(safe-area-inset-bottom));right:18px}
 }
 @media (max-width:760px){
-  .clockbox{left:max(12px,env(safe-area-inset-left));right:auto;top:calc(max(12px,env(safe-area-inset-top)) + 70px);justify-items:start;max-width:calc(100% - 24px)}
+  .hud-summary{position:absolute;top:max(12px,env(safe-area-inset-top));left:max(12px,env(safe-area-inset-left));right:max(12px,env(safe-area-inset-right));display:flex;flex-direction:column;align-items:flex-start;gap:6px}
+  .hud-summary .clockbox{position:static;justify-items:start;max-width:100%}
   #objective{text-align:left}
-  .hud{max-width:calc(100% - 76px)}
+  .hud-summary .hud{position:static;max-width:calc(100% - 64px)}
 }

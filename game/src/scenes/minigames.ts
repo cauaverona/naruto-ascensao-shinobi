@@ -1,6 +1,9 @@
 // Minijogos de treino. Cada um devolve uma nota de 0 a 1 que vira evolução de atributo e domínio.
 import type { Tactic } from '../data/squad';
 import { SEALS } from '../data/academy';
+import type { Jutsu } from '../data/jutsus';
+import { drawCombatEffect, type EffectKind } from '../render/combat-effects';
+import { drawActor, type Actor } from '../render/sprites';
 import { px, ovalpx } from '../render/gfx';
 
 type G = CanvasRenderingContext2D;
@@ -68,7 +71,7 @@ export class StrikeGame implements Minigame {
   done = false; score = 0;
   private pos = 0; private dir = 1; private hits = 0; private total = 0; private zone = 0.2; private shake = 0; private last = '';
   constructor(private power: number, public title = 'Troncos de treino',
-    public help = 'Aperte quando o marcador estiver na faixa dourada. 6 golpes.', private target: 'log' | 'bell' = 'log',
+    public help = 'Aperte quando o marcador estiver na faixa dourada. 6 golpes.', private target: 'log' | 'bell' | 'track' = 'log',
     private tactic?: Tactic) {
     if (tactic === 'rastreio') this.zone = 0.27;
   }
@@ -89,6 +92,14 @@ export class StrikeGame implements Minigame {
         px(g, x - 3 + s, base - 33, 4, 6, '#f0cd75');
         px(g, x - 2 + s, base - 19, 4, 3, '#805936');
       }
+    } else if (this.target === 'track') {
+      px(g, cx - 42, base - 21, 84, 24, '#8f7456');
+      px(g, cx - 42, base - 18, 84, 18, '#c29a68');
+      for (const x of [cx - 28, cx - 2, cx + 24]) {
+        px(g, x, base - 36, 2, 34, '#593f34');
+        px(g, x + 2, base - 36, 10, 6, x < cx - 10 ? '#a5be77' : '#e4ad66');
+      }
+      px(g, cx - 39, base - 11, Math.min(76, 11 + this.hits * 12), 3, '#efcf87');
     } else {
       px(g, cx - 10 + s, base - 56, 20, 60, '#6d5338');
       px(g, cx - 8 + s, base - 56, 5, 58, '#9b7a50');
@@ -122,7 +133,12 @@ export class ChakraGame implements Minigame {
   help = 'Segure E, espaço ou o botão A para subir o chakra; solte para descer. Fique dentro da faixa.';
   done = false; score = 0;
   private level = 0.2; private held = false; private t = 0; private inside = 0; private readonly length = 8;
-  constructor(private control: number) {}
+  constructor(private control: number, private breathing = false) {
+    if (breathing) {
+      this.title = 'Ritmo de fôlego';
+      this.help = 'Segure E ou A para inspirar e solte para expirar. Siga a faixa verde.';
+    }
+  }
   private band() { const c = 0.5 + Math.sin(this.t * 0.9) * 0.28 + Math.sin(this.t * 2.1) * 0.06; const half = 0.09 + this.control * 0.006; return [c - half, c + half]; }
   update(dt: number) {
     if (this.done) return;
@@ -138,13 +154,19 @@ export class ChakraGame implements Minigame {
     panel(g, gx, gy, 18, gh);
     const [lo, hi] = this.band();
     const y = (v: number) => Math.round(gy + gh - v * gh);
-    px(g, gx + 2, y(hi), 14, y(lo) - y(hi), '#7fcbe0');
+    px(g, gx + 2, y(hi), 14, y(lo) - y(hi), this.breathing ? '#8eb983' : '#7fcbe0');
     const ly = y(this.level);
     const inBand = this.level >= lo && this.level <= hi;
     px(g, gx - 6, ly - 1, 30, 3, inBand ? '#f0c27a' : '#2b1a10');
-    // Folha equilibrada na testa: brilha quando o controle está certo.
     const lx = gx + 40, lyy = gy + 20;
-    ovalpx(g, lx, lyy, 8, 4, inBand ? '#a6d17a' : '#6f8f4f'); px(g, lx - 8, lyy, 16, 1, '#3e5a30');
+    if (this.breathing) {
+      const width = Math.round(8 + this.level * 8);
+      ovalpx(g, lx, lyy, width, 5, '#42664f');
+      ovalpx(g, lx, lyy, width - 2, 3, inBand ? '#d0dfaa' : '#759674');
+    } else {
+      ovalpx(g, lx, lyy, 8, 4, inBand ? '#a6d17a' : '#6f8f4f');
+      px(g, lx - 8, lyy, 16, 1, '#3e5a30');
+    }
     px(g, gx + 24, gy + gh + 12, Math.round(((this.t / this.length) * 100)), 3, '#e07a52');
   }
   press(down: boolean) { this.held = down; }
@@ -205,6 +227,127 @@ export class SealsGame implements Minigame {
     else this.roll();
   }
   status() { return `Selo ${Math.min(this.seq.length, this.idx + 1)}/${this.seq.length}`; }
+}
+
+const POSITIONS = [
+  { label: '↖', sub: 'Superior esquerda' }, { label: '↗', sub: 'Superior direita' },
+  { label: '↙', sub: 'Inferior esquerda' }, { label: '↘', sub: 'Inferior direita' },
+];
+
+export class ObservationGame implements Minigame {
+  title: string;
+  help: string;
+  done = false;
+  score = 0;
+  options: { label: string; sub: string }[] = [];
+  private target = 0;
+  private round = 0;
+  private elapsed = 0;
+  private earned = 0;
+
+  constructor(private illusion: boolean, private rand: () => number) {
+    this.title = illusion ? 'Reconhecer ilusões' : 'Leitura tática';
+    this.help = illusion ? 'Memorize o selo verdadeiro, marcado com dois anéis. Depois aponte a posição.' :
+      'Memorize a passagem livre entre os bloqueios. Depois aponte a posição.';
+    this.next();
+  }
+
+  private next() {
+    this.target = Math.floor(this.rand() * 4);
+    this.elapsed = 0;
+    this.options = [];
+  }
+
+  update(dt: number) {
+    if (this.done) return;
+    this.elapsed += dt;
+    if (this.elapsed >= 4) this.choose(-1);
+    else if (this.elapsed >= 1.2) this.options = POSITIONS;
+  }
+
+  choose(index: number) {
+    if (this.done || !this.options.length) return;
+    if (index === this.target) this.earned++;
+    this.round++;
+    if (this.round === 4) {
+      this.done = true;
+      this.score = this.earned / 4;
+      this.options = [];
+    } else this.next();
+  }
+
+  press() { /* O exercício usa escolhas direcionais. */ }
+
+  render(g: G, w: number, h: number) {
+    px(g, 0, 0, w, h, 'rgba(14,21,23,.65)');
+    const x = Math.round(w / 2 - 39), y = Math.round(h * 0.13);
+    const visible = this.elapsed < 1.2 && !this.done;
+    for (let i = 0; i < 4; i++) {
+      const tx = x + (i % 2) * 42, ty = y + Math.floor(i / 2) * 34;
+      panel(g, tx, ty, 35, 27);
+      if (!visible) continue;
+      const correct = i === this.target;
+      if (this.illusion) {
+        ovalpx(g, tx + 17, ty + 14, 10, 8, correct ? '#7ab3af' : '#8f789a');
+        if (correct) ovalpx(g, tx + 17, ty + 14, 6, 4, '#e3dcae');
+        px(g, tx + 15, ty + 12, 4, 4, '#51465f');
+      } else {
+        px(g, tx + 5, ty + 7, 25, 13, correct ? '#96b978' : '#866052');
+        if (correct) {
+          px(g, tx + 15, ty + 10, 5, 7, '#e9e2b4');
+        } else {
+          for (const mark of [0, 1, 2]) px(g, tx + 8 + mark * 7, ty + 6, 3, 15, '#473f36');
+        }
+      }
+    }
+  }
+
+  status() {
+    const step = this.options.length ? 'Responda' : 'Observe';
+    return `${step} · ${Math.min(4, this.round + 1)}/4`;
+  }
+}
+
+export class JutsuPracticeGame extends SealsGame {
+  private elapsed = 0;
+  private reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  constructor(private technique: Jutsu, private actor: Actor, rand: () => number, private successScore = 0.5) {
+    super(technique.era === 'academia' ? 4 : 6, rand, 2.6);
+    this.title = `Treino · ${technique.name}`;
+  }
+
+  update(dt: number) {
+    if (this.done) this.elapsed += dt;
+    else super.update(dt);
+  }
+
+  render(g: G, w: number, h: number) {
+    if (!this.done) { super.render(g, w, h); return; }
+    g.fillStyle = 'rgba(14,21,23,.55)'; g.fillRect(0, 0, w, h);
+    const x = Math.round(w / 2), y = Math.round(h * 0.46);
+    const effect = this.technique.effect;
+    const executed = this.score >= this.successScore;
+    const burst = (kind: EffectKind, at: number) =>
+      drawCombatEffect(g, { kind, age: this.elapsed, duration: 1.25, side: 0, offset: 0 }, at, y, 1, this.reducedMotion);
+    ovalpx(g, x, y - 1, 12, 3, '#3f4236');
+    if (executed && effect === 'substitution') {
+      drawActor(g, x + 32, y, this.actor, 'left', -1);
+      burst('log', x); burst('smoke', x);
+    } else {
+      const transformed = executed && effect === 'disguise' && this.elapsed > 0.26;
+      drawActor(g, x, y, transformed ? { role: 'gen' } : this.actor, 'right', -1);
+      if (!executed) burst('fizzle', x);
+      else if (effect === 'clones') {
+        for (const offset of [-32, 32]) {
+          g.save(); g.globalAlpha = this.technique.rank === 'E' ? 0.55 : 0.9;
+          drawActor(g, x + offset, y, this.actor, 'right', -1); g.restore();
+          burst('smoke', x + offset);
+        }
+      } else if (effect === 'damage') burst(this.technique.visual ?? 'fire', x + 24 + (this.reducedMotion ? 0 : this.elapsed * 30));
+      else burst('smoke', x);
+    }
+  }
 }
 
 export function grade(score: number) {

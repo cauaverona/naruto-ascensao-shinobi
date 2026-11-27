@@ -16,6 +16,9 @@ export const DUEL_STYLES: Record<string, Style> = {
   hinata: { title: 'Contra-ataque preciso', strike: 'Palma curta', accent: '#e5d3ef', opener: 'guarda' },
   shino: { title: 'Controle de alcance', strike: 'Corte de aproximação', accent: '#a4c295', opener: 'alcance' },
   emi: { title: 'Passos e fintas', strike: 'Giro lateral', accent: '#e2b383', opener: 'finta' },
+  'rock-lee': { title: 'Taijutsu e velocidade', strike: 'Redemoinho da Folha', accent: '#a6ce72', opener: 'pressao' },
+  neji: { title: 'Precisão e contra-ataque', strike: 'Palma de precisão', accent: '#d7dfef', opener: 'guarda' },
+  tenten: { title: 'Arremessos à distância', strike: 'Passo do arremesso', accent: '#ebafaf', opener: 'alcance' },
   maki: { title: 'Guarda da ronda', strike: 'Chute de contenção', accent: '#e0ad74', opener: 'guarda' },
   daichi: { title: 'Corpo a corpo', strike: 'Direto de avanço', accent: '#cb9b80', opener: 'pressao' },
 };

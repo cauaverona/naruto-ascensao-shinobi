@@ -1,6 +1,7 @@
 // Personagens simulados (seção 6). Cada NPC tem atributos, técnicas, personalidade, objetivos,
 // relações, rotina e progressão própria. Conteúdo marcado com `original: true` foi criado para o jogo.
 import { baseStats, type StatBlock, type Stat, type Element, type Rank } from './stats';
+import type { BandPosition } from './appearance';
 
 export type SpriteRole = 'player' | 'iruka' | 'emi' | 'gen' | 'naruto' | 'sasuke' | 'sakura';
 export type MapId = 'rua' | 'campo' | 'sala';
@@ -9,7 +10,7 @@ export type Period = 0 | 1 | 2; // manhã, tarde, noite
 export interface Look {
   skin: string; hair: string; coat: string; cut: string;
   clan?: string; trim?: string; accessory?: string; mark?: string; band?: string;
-  outfit?: string; scarf?: string; accessoryTone?: string;
+  outfit?: string; scarf?: string; accessoryTone?: string; bandPosition?: BandPosition; bandAtWaist?: boolean;
 }
 
 export interface Personality {
@@ -51,6 +52,18 @@ function stats(over: Partial<StatBlock>): StatBlock {
   return { ...baseStats(1), ...over };
 }
 
+const FIELD_PACE: Record<string, [number, number]> = {
+  ino: [12, 8], shikamaru: [10, -4], choji: [12, 5], kiba: [-13, -7], hinata: [3, -14], shino: [12, -5],
+  'rock-lee': [-12, -8], neji: [12, -10], tenten: [14, 8], guy: [12, 4],
+};
+
+function trainingPath(id: string, x: number, y: number): [number, number][] | undefined {
+  const pace = FIELD_PACE[id];
+  if (!pace) return;
+  const [dx, dy] = pace;
+  return [[x, y], [x + dx, y + dy]];
+}
+
 function student(id: string, name: string, clan: string, look: Look, seat: [number, number],
   training: [number, number], strength: Stat, values: [number, number, number], goal: string): CharacterDef {
   const [aggression, cunning, caution] = values;
@@ -62,7 +75,7 @@ function student(id: string, name: string, clan: string, look: Look, seat: [numb
     practice: { bunshin: 1.1 }, classmate: true,
     schedule: {
       0: { map: 'sala', x: seat[0], y: seat[1], dir: 'up' },
-      1: { map: 'campo', x: training[0], y: training[1], dir: 'down' },
+      1: { map: 'campo', x: training[0], y: training[1], dir: 'down', route: trainingPath(id, ...training) },
     },
   };
 }
@@ -74,6 +87,19 @@ function teacher(id: string, name: string, clan: string, look: Look, goal: strin
     stats: { ...baseStats(8), Percepção: 10 }, jutsus: { henge: 95, kawarimi: 95, bunshin: 95 },
     personality: { aggression: 0.48, cunning: 0.8, caution: 0.58, traits: [goal] },
     goals: [goal], habits: {},
+  };
+}
+
+export const GUY_TEAM = ['rock-lee', 'neji', 'tenten'] as const;
+
+function visitingGenin(id: (typeof GUY_TEAM)[number], name: string, clan: string, look: Look, x: number, y: number,
+  abilities: Partial<StatBlock>, jutsus: Record<string, number>, values: [number, number, number], goal: string): CharacterDef {
+  const [aggression, cunning, caution] = values;
+  return {
+    id, name, clan, look: { scarf: 'Sem cachecol', ...look }, role: 'player', age: 13, rank: 'Genin', affinities: [],
+    stats: stats({ Vitalidade: 3, Chakra: 3, Resistência: 3, ...abilities }), jutsus,
+    personality: { aggression, cunning, caution, traits: [goal] }, goals: [goal], habits: {},
+    classmate: false, schedule: { 1: { map: 'campo', x, y, dir: 'down', route: trainingPath(id, x, y) } },
   };
 }
 
@@ -173,6 +199,23 @@ export const CHARACTERS: Record<string, CharacterDef> = {
   shino: student('shino', 'Shino', 'Aburame',
     { skin: 'Dourada', hair: 'Preto', cut: 'Curto', coat: 'Musgo', scarf: 'Gola enrolada', accessory: 'Óculos', outfit: 'Capa curta' },
     [284, 199], [550, 316], 'Percepção', [0.31, 0.85, 0.77], 'Observar o terreno antes de agir'),
+  'rock-lee': visitingGenin('rock-lee', 'Rock Lee', 'Sem clã',
+    { skin: 'Clara', hair: 'Preto', cut: 'Corte tigela', coat: 'Folha', outfit: 'Traje leve', trim: 'Laranja', band: 'Vermelho', bandAtWaist: true, mark: 'Sobrancelhas fortes' },
+    259, 263, { Força: 4, Velocidade: 5, Taijutsu: 6, Resistência: 4 }, {}, [0.87, 0.32, 0.37],
+    'Dominar o taijutsu por meio do treino'),
+  neji: visitingGenin('neji', 'Neji', 'Hyūga',
+    { skin: 'Pálida', hair: 'Castanho', cut: 'Longo', coat: 'Branco', outfit: 'Túnica cruzada', band: 'Azul' },
+    361, 236, { Percepção: 5, Taijutsu: 5, Velocidade: 4, 'Controle de chakra': 5 },
+    { kawarimi: 60 }, [0.43, 0.72, 0.67], 'Aprimorar a precisão em combate'),
+  tenten: visitingGenin('tenten', 'Tenten', 'Sem clã',
+    { skin: 'Dourada', hair: 'Chocolate', cut: 'Coques duplos', coat: 'Rosa', outfit: 'Túnica cruzada', trim: 'Vermelho' },
+    527, 187, { Bukijutsu: 6, Percepção: 5, Velocidade: 4 }, { kawarimi: 45 }, [0.5, 0.65, 0.54],
+    'Acertar cada alvo de primeira'),
+  guy: {
+    ...teacher('guy', 'Might Guy', 'Sem clã', { skin: 'Bronzeada', hair: 'Preto', cut: 'Franja', coat: 'Musgo',
+      trim: 'Laranja', band: 'Vermelho' }, 'Preparar Genin com disciplina e trabalho de equipe', 26),
+    schedule: { 1: { map: 'campo', x: 326, y: 243, dir: 'down', route: trainingPath('guy', 326, 243) } },
+  },
   kakashi: teacher('kakashi', 'Kakashi', 'Hatake', { skin: 'Clara', hair: 'Prateado', cut: 'Espetado', coat: 'Folha', accessory: 'Máscara' }, 'Ensinar o valor da equipe', 26),
   asuma: teacher('asuma', 'Asuma', 'Sarutobi', { skin: 'Bronzeada', hair: 'Preto', cut: 'Espetado', coat: 'Musgo', band: 'Preto' }, 'Ensinar a proteger os companheiros', 27),
   kurenai: teacher('kurenai', 'Kurenai', 'Yūhi', { skin: 'Pálida', hair: 'Preto', cut: 'Longo', coat: 'Branco', trim: 'Vermelho', outfit: 'Túnica cruzada', band: 'Vermelho' }, 'Treinar a atenção aos detalhes', 27),

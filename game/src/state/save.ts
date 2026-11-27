@@ -2,9 +2,11 @@
 import {
   SCHEMA, GAME_VERSION, HOME_SPOT, LOOK_DEFAULTS, emptyStatXp, npcInitial, type Campaign, type LogEntry,
 } from './campaign';
-import { baseStats, maxVitals, STATS, type StatBlock } from '../data/stats';
+import { baseStats, maxVitals, RANKS, STATS, type StatBlock } from '../data/stats';
+import { bandPositionOf } from '../data/appearance';
 
 export const SLOT_COUNT = 3;
+export const MAX_SAVE_BYTES = 1024 * 1024;
 export const slotKey = (i: number) => `ascensao.campanha.${i}`;
 export const LAST_SLOT_KEY = 'ascensao.ultimo';
 
@@ -21,7 +23,7 @@ export function decode(raw: string): Campaign {
   if (s.schema === 1 || s.schema === 2) return migrateV2(s);
   if (s.schema !== SCHEMA) throw new Error('Formato incompatível');
   validate(s);
-  s.profile = { ...LOOK_DEFAULTS, ...s.profile };
+  s.profile = { ...LOOK_DEFAULTS, ...s.profile, bandPosition: bandPositionOf(s.profile) };
   s.version = GAME_VERSION;
   // NPCs acrescentados ao mesmo formato estrutural preservam a progressão dos já existentes.
   for (const [id, initial] of Object.entries(npcInitial())) {
@@ -68,6 +70,7 @@ function migrateV2(old: V2Save): Campaign {
       element: p.element ?? 'Fogo', talent: p.talent ?? 'Percepção', attribute: p.attribute ?? 'Vitalidade',
       past: p.past ?? 'Família de artesãos', skin: p.skin ?? 'Dourada', hair: p.hair ?? 'Preto', cut: p.cut ?? 'Curto', coat: p.coat ?? 'Índigo',
       ...LOOK_DEFAULTS,
+      bandPosition: bandPositionOf({ bandPosition: p.bandPosition }),
     },
     stats, statXp: emptyStatXp(), rank: 'Estudante da Academia', xp: 0, reputation: 0, age: 12,
     day: Math.max(1, old.day ?? 1), period: 0, actions: 3, hp: v.hp, chakra: v.chakra, stamina: v.stamina, ryo: 120,
@@ -107,6 +110,47 @@ export function writeSlot(store: StorageLike, i: number, c: Campaign, snapshot: 
   } catch {
     return { ok: false, reason: 'storage' };
   }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === 'object' && !Array.isArray(value);
+}
+
+function numberRecord(value: unknown): boolean {
+  return isRecord(value) && Object.values(value).every((n) => typeof n === 'number' && Number.isFinite(n) && n >= 0);
+}
+
+function validBackup(c: Campaign): boolean {
+  return Number.isSafeInteger(c.day) && c.day >= 1
+    && ['rua', 'campo', 'sala'].includes(c.map) && ['up', 'down', 'left', 'right'].includes(c.dir)
+    && RANKS.includes(c.rank) && typeof c.quest === 'string' && typeof c.era === 'string'
+    && ['facil', 'normal', 'dificil'].includes(c.settings?.difficulty)
+    && ['fiel', 'equilibrado', 'alternativo'].includes(c.settings?.fidelity)
+    && [c.actions, c.hp, c.chakra, c.stamina, c.ryo, c.xp, c.playtime].every((v) => Number.isFinite(v) && v >= 0)
+    && [c.reputation, c.seed, c.rng, c.wins, c.losses].every(Number.isFinite)
+    && ['clan', 'village', 'talent', 'past'].every((k) => typeof c.profile[k as keyof Campaign['profile']] === 'string')
+    && [c.statXp, c.jutsus, c.inventory, c.lessonScores].every(numberRecord)
+    && isRecord(c.flags) && Object.values(c.flags).every((v) => ['string', 'number', 'boolean'].includes(typeof v))
+    && isRecord(c.events) && Object.values(c.events).every((v) => typeof v === 'string')
+    && Array.isArray(c.seen) && c.seen.every((v) => typeof v === 'string')
+    && Array.isArray(c.lessonsDone) && c.lessonsDone.every(Number.isSafeInteger)
+    && Array.isArray(c.log) && c.log.every((entry) => !!entry && Number.isFinite(entry.day) && typeof entry.text === 'string')
+    && isRecord(c.npcs) && Object.values(c.npcs).every((npc) => isRecord(npc)
+      && numberRecord(npc.stats) && numberRecord(npc.jutsus) && isRecord(npc.bond)
+      && Object.values(npc.bond).every(Number.isFinite) && Array.isArray(npc.memory));
+}
+
+/** Importa nos mesmos slots e sem substituir uma jornada existente. */
+export function importSlot(store: StorageLike, i: number, raw: string):
+  { ok: true; raw: string } | { ok: false; reason: 'invalid' | 'conflict' | 'storage' } {
+  let campaign: Campaign;
+  try {
+    campaign = decode(raw);
+    if (!validBackup(campaign)) return { ok: false, reason: 'invalid' };
+  } catch {
+    return { ok: false, reason: 'invalid' };
+  }
+  return writeSlot(store, i, campaign, null);
 }
 
 /** Remove somente a revisão que o jogador confirmou, inclusive se estiver ilegível. */

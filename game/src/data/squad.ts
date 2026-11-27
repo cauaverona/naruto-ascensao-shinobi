@@ -18,6 +18,15 @@ export const SUPPORT: Record<string, Support> = {
   hinata: { tactic: 'rastreio', plan: 'Vejo por onde ele passou. Posso mostrar a janela antes de você dar o passo.', trail: 'Tem algo se mexendo atrás das folhas. A trilha passa por ali.', supply: 'Há uma rachadura na base. Apoie pela lateral para não perder o conteúdo.' },
   shino: { tactic: 'rastreio', plan: 'Meus insetos marcam por onde ele passou. Preste atenção à trilha que aparecer.', trail: 'Os insetos voltaram por este caminho. A terra ainda está mexida.', supply: 'Os insetos verificaram a madeira. Esta caixa é a única que ainda não abriu.' },
   emi: { tactic: 'distracao', plan: 'Eu imito o chamado do dono. Quando ele virar a cabeça, faça seu movimento.', trail: 'Ouvi um miado perto desta trilha quando passei com os recados.', supply: 'Já conferi o destino e preparei a alça. Leve por este caminho, que é mais curto.' },
+  'rock-lee': { tactic: 'bloqueio', plan: 'Eu chego primeiro à saída. Espere Tora parar e cubra o outro lado.',
+    trail: 'Reconheço estas pegadas. É o trecho onde faço minhas voltas de treino.',
+    supply: 'Levantei a caixa devagar. Agora está equilibrada e pronta para levar.' },
+  neji: { tactic: 'rastreio', plan: 'Vou observar o caminho sob as folhas. Quando ele sair, aviso onde você deve pisar.',
+    trail: 'Os rastros viram atrás da cerca. A marca perto da trilha maior está seca.',
+    supply: 'O peso está concentrado na lateral. Segure pelo canto mais firme.' },
+  tenten: { tactic: 'distracao', plan: 'Vou fazer uma pedra tilintar longe da trilha. Aproxime-se quando Tora olhar.',
+    trail: 'Achei pelos junto de um dos meus alvos. Ele se encolheu para passar por aqui.',
+    supply: 'Separei as ferramentas cortantes e amarrei a tampa. Confira o lacre.' },
   daichi: { tactic: 'bloqueio', plan: 'Eu seguro a passagem estreita. Ele vai precisar parar antes de voltar.', trail: 'Eu vi a terra cair deste tronco. Alguma coisa passou depressa por aqui.', supply: 'A caixa era pesada. Enfiei uma cunha por baixo e agora dá para levar.' },
 };
 
@@ -25,6 +34,7 @@ export const MENTOR_LESSON: Record<string, string> = {
   kakashi: 'Os sinos chamam atenção. Repare em quem fica fora do seu campo de visão.',
   asuma: 'Quem cobre a retirada é tão importante quanto quem chega primeiro.',
   kurenai: 'Antes de avançar, confirme o que viu. Uma distração muda a leitura do campo.',
+  guy: 'Eu quero ver fôlego para voltar pelo colega. Um bom treino termina com a equipe inteira de pé.',
   naomi: 'Marquem o ponto de encontro agora. Se o plano mudar, todo mundo sabe para onde voltar.',
 };
 
