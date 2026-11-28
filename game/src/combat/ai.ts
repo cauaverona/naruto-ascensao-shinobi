@@ -2,10 +2,128 @@
 // distância, vida e chakra aparentes, o que o adversário mostrou na última ação e as técnicas
 // que já viu funcionar. Nunca lê `status.substitution` do adversário (é oculto).
 import { DUEL_STYLES } from './styles';
+import { HYOTON } from '../data/jutsus';
 import { Rng } from '../core/rng';
 import { available, type Action, type Battle } from './engine';
 
+/** A interface anuncia as ações preparadas e executa o mesmo plano. */
+export function duelIntent(b: Battle, side: 0 | 1): { action: Action; cue: string } | undefined {
+  const me = b.fighters[side];
+  if (me.id === 'haku') {
+    const phase = b.round % 3;
+    if (phase === 0 && available(b, side).some(({ action, ok }) => ok && action.type === 'jutsu' && action.id === HYOTON)) {
+      return { action: { type: 'jutsu', id: HYOTON }, cue: 'Haku reúne gelo entre as mãos. Use a guarda ou uma substituição.' };
+    }
+    if (phase === 1 && me.chakra < me.chakraMax) {
+      return { action: { type: 'focus' }, cue: 'Haku baixa as mãos para recuperar chakra. É sua chance de atacar.' };
+    }
+    if (b.distance === 0 && phase !== 1) {
+      return { action: { type: 'retreat' }, cue: 'Haku procura espaço para lançar gelo. Você pode pressionar antes que ele se afaste.' };
+    }
+  }
+  if (me.id === 'zabuza') {
+    const phase = b.round % 3;
+    if (phase === 0 && b.distance !== 2 && me.stamina >= 6) return {
+      action: { type: 'taijutsu', heavy: true }, cue: 'Zabuza ergue a lâmina para um corte pesado. Defender reduz muito o impacto.',
+    };
+    if (phase === 1) return {
+      action: { type: 'focus' }, cue: 'Zabuza apoia a lâmina no chão para recuperar o fôlego. O flanco está aberto.',
+    };
+  }
+  if (me.id === 'floresta') {
+    const phase = b.round % 4;
+    if (b.round === 0 && available(b, side).some(({ action, ok }) => ok && action.type === 'jutsu' && action.id === 'bunshin')) {
+      return { action: { type: 'jutsu', id: 'bunshin' }, cue: 'O batedor prepara cópias. Use arremessos leves para dissipá-las.' };
+    }
+    if (phase === 1 && b.distance > 0 && me.items.shuriken > 0) {
+      return { action: { type: 'shuriken' }, cue: 'O batedor procura um ângulo para arremessar. Feche a distância ou use a guarda.' };
+    }
+    if (phase === 2) return {
+      action: { type: 'focus' }, cue: 'O batedor desfaz os selos para recuperar chakra. Aproveite a abertura.',
+    };
+  }
+  if (me.id === 'gaara') {
+    const phase = b.round % 4;
+    if (phase === 0) return {
+      action: { type: 'defend' }, cue: 'A areia se fecha ao redor de Gaara. Use a rodada para preparar uma técnica ou recuperar resistência.',
+    };
+    if (phase === 1 && b.distance === 2) return {
+      action: { type: 'advance' }, cue: 'Gaara avança por trás da areia. Você ainda pode atingi-lo com um arremesso.',
+    };
+    if (phase === 1 && me.stamina >= 6) return {
+      action: { type: 'taijutsu', heavy: true }, cue: 'A areia se ergue para uma investida pesada. Defenda se ainda não tiver uma substituição preparada.',
+    };
+    if (phase === 2) return {
+      action: { type: 'focus' }, cue: 'A areia baixa enquanto Gaara recupera o fôlego. Ataque agora, com a defesa aberta.',
+    };
+  }
+  if (me.id === 'invasao') {
+    const phase = b.round % 3;
+    if (phase === 0 && b.distance === 0 && me.items.shuriken > 0) return {
+      action: { type: 'retreat' }, cue: 'O invasor procura espaço para arremessar. Ataque antes do recuo ou prepare a guarda.',
+    };
+    if (phase !== 2 && b.distance > 0 && me.items.shuriken > 0 && me.stamina >= 2) return {
+      action: { type: 'shuriken' }, cue: 'O invasor leva a mão à bolsa. Defenda o arremesso ou feche a distância.',
+    };
+    if (phase === 2) return {
+      action: { type: 'focus' }, cue: 'O invasor baixa a guarda para recuperar fôlego. Aproveite a abertura.',
+    };
+  }
+  if (me.id === 'akatsuki') {
+    const phase = b.round % 4;
+    if ((b.round === 0 || b.round === 8) && me.status.clones === 0
+        && available(b, side).some(({ action, ok }) => ok && action.type === 'jutsu' && action.id === 'bunshin')) {
+      return { action: { type: 'jutsu', id: 'bunshin' }, cue: 'Kisame começa a formar cópias. Prepare uma substituição ou use arremessos para dissipá-las.' };
+    }
+    if (phase === 1 && b.distance === 2) return {
+      action: { type: 'advance' }, cue: 'Kisame arrasta a lâmina para encurtar a distância. Você ainda tem tempo para agir.',
+    };
+    if (phase === 1 && me.stamina >= 6) return {
+      action: { type: 'taijutsu', heavy: true }, cue: 'Kisame ergue a lâmina para um golpe pesado. Use a guarda ou deixe uma substituição preparada.',
+    };
+    if (phase === 2) return {
+      action: { type: 'focus' }, cue: 'Kisame apoia a lâmina no chão para recuperar chakra. Aproveite a abertura.',
+    };
+  }
+  if (me.id === 'som') {
+    const phase = b.round % 4;
+    if (b.round === 0 && available(b, side).some(({ action, ok }) => ok && action.type === 'jutsu' && action.id === 'henge')) {
+      return { action: { type: 'jutsu', id: 'henge' }, cue: 'A sentinela muda de forma entre as árvores. Prepare a guarda ou uma substituição para quando ela atacar.' };
+    }
+    if (phase === 1 && b.distance > 0 && me.items.shuriken > 0 && me.stamina >= 2) return {
+      action: { type: 'shuriken' }, cue: 'O galho se mexe e a mão vai à bolsa. A sentinela vai arremessar da trilha lateral.',
+    };
+    if (phase === 1 && b.distance === 0 && me.stamina >= 6) return {
+      action: { type: 'taijutsu', heavy: true }, cue: 'A sentinela firma o pé para um golpe pesado. Defenda ou use a substituição preparada.',
+    };
+    if (phase === 2) return {
+      action: { type: 'focus' }, cue: 'A sentinela para para recompor os selos. A guarda está aberta.',
+    };
+  }
+  if (me.id === 'sasuke-vale') {
+    const phase = b.round % 4;
+    const fire = available(b, side).find(({ action }) => action.type === 'jutsu' && action.id === 'gokakyu');
+    if (phase === 0 && fire?.ok) return {
+      action: fire.action, cue: 'Sasuke enche o peito para um Katon. Prepare a guarda ou use uma substituição.',
+    };
+    if (phase === 0 && b.distance === 0) return {
+      action: { type: 'retreat' }, cue: 'Sasuke procura espaço para usar o Katon. Pressione se quiser manter a luta por perto.',
+    };
+    if (phase === 1 && b.distance === 0 && me.stamina >= 6) return {
+      action: { type: 'taijutsu', heavy: true }, cue: 'Sasuke gira o corpo para um golpe pesado. Defenda ou responda com a substituição.',
+    };
+    if (phase === 1 && b.distance > 0 && me.items.shuriken > 0 && me.stamina >= 2) return {
+      action: { type: 'shuriken' }, cue: 'Sasuke leva a mão à bolsa. Ele vai lançar shuriken para manter a distância.',
+    };
+    if (phase === 2) return {
+      action: { type: 'focus' }, cue: 'Sasuke baixa a guarda para recuperar chakra. Aproveite a abertura.',
+    };
+  }
+}
+
 export function chooseAction(b: Battle, side: 0 | 1, rng: Rng): Action {
+  const intent = duelIntent(b, side);
+  if (intent) return intent.action;
   const me = b.fighters[side];
   const foe = b.fighters[side === 0 ? 1 : 0];
   const p = me.personality ?? { aggression: 0.5, cunning: 0.5, caution: 0.5, traits: [] };

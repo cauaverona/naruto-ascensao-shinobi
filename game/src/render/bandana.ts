@@ -19,4 +19,3 @@ export function paintBandana(g: CanvasRenderingContext2D, x: number, y: number, 
   }
   g.restore();
 }
-

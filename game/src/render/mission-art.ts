@@ -1,6 +1,73 @@
-import { ovalpx, px } from './gfx';
+import { ctx, offscreen, ovalpx, poly, px } from './gfx';
 
 type G = CanvasRenderingContext2D;
+
+export type ExamScroll = 'ceu' | 'terra' | 'reserva';
+
+const SCROLL_SEALS = {
+  ceu: ['.#####.', '...#...', '#######', '...#...', '..#.#..', '.#...#.', '#.....#'],
+  terra: ['.#...#.', '.#.#.#.', '#######', '.###.#.', '.#.#.#.', '##.#..#', '...####'],
+} as const;
+
+export function drawExamScroll(g: G, x: number, y: number, kind: ExamScroll) {
+  const pixel = (dx: number, dy: number, width: number, height: number, color: string) =>
+    px(g, x + dx, y + dy, width, height, color);
+  ovalpx(g, x, y + 1, 14, 2, 'rgba(11,18,22,.52)');
+  if (kind === 'reserva') {
+    const cloth = [[-13, -6], [-10, -12], [2, -15], [12, -12], [15, -5], [10, 0], [-9, 0]];
+    poly(g, cloth.map(([dx, dy]) => [Math.round(x) + dx, Math.round(y) + dy]), '#362e2b');
+    pixel(-11, -9, 7, 7, '#886b4d');
+    pixel(-8, -12, 16, 9, '#ac8a60');
+    pixel(-5, -13, 11, 2, '#c4a479');
+    pixel(8, -10, 4, 7, '#795a47');
+    pixel(-10, -4, 20, 3, '#715442');
+    pixel(-11, -8, 24, 2, '#487181');
+    pixel(2, -13, 2, 12, '#385967');
+    pixel(1, -9, 5, 4, '#93c9d0');
+    pixel(3, -7, 2, 2, '#254752');
+    pixel(6, -5, 3, 1, '#c5b691');
+    return;
+  }
+
+  const [shade, cloth, edge] = kind === 'ceu'
+    ? ['#223944', '#446f82', '#8db5c6'] : ['#542d23', '#9b4c33', '#d68959'];
+  // As tampas de madeira passam por cima das bordas do papel enrolado.
+  pixel(-15, -15, 30, 13, '#211d21');
+  pixel(-13, -14, 26, 11, shade);
+  pixel(-12, -13, 24, 8, cloth);
+  pixel(-12, -13, 24, 1, edge);
+  pixel(-6, -14, 12, 10, '#e1cf9e');
+  pixel(-5, -14, 10, 1, '#fff2c8');
+  pixel(-6, -5, 12, 2, '#9d805c');
+  for (const [row, pattern] of SCROLL_SEALS[kind].entries()) {
+    for (const [column, mark] of [...pattern].entries()) {
+      if (mark === '#') pixel(column - 3, row - 12, 1, 1, shade);
+    }
+  }
+  for (const end of [-1, 1]) {
+    const cap = end < 0 ? -15 : 10;
+    pixel(cap, -17, 5, 16, '#352623');
+    pixel(cap + 1, -16, 3, 13, '#92694e');
+    pixel(cap + 1, -16, 3, 2, '#d5aa7d');
+    pixel(cap + 2, -9, 2, 2, '#63432f');
+    pixel(cap + 1, -4, 3, 2, edge);
+  }
+  pixel(6, -8, 3, 5, '#f0c884');
+  pixel(7, -7, 1, 2, '#9b552f');
+}
+
+const fieldScrolls = new Map<ExamScroll, HTMLCanvasElement>();
+export function drawFieldExamScroll(g: G, x: number, y: number, kind: ExamScroll) {
+  let sprite = fieldScrolls.get(kind);
+  if (!sprite) {
+    sprite = offscreen(22, 14);
+    const original = offscreen(34, 22);
+    drawExamScroll(ctx(original), 17, 18, kind);
+    ctx(sprite).drawImage(original, 0, 0, sprite.width, sprite.height);
+    fieldScrolls.set(kind, sprite);
+  }
+  g.drawImage(sprite, Math.round(x) - 11, Math.round(y) - 11);
+}
 
 export function drawTora(g: G, x: number, y: number, scale: number, facing: number, frame: number) {
   const pixel = (dx: number, dy: number, w: number, h: number, color: string) =>
@@ -116,4 +183,3 @@ export function drawSupply(g: G, x: number, y: number, kind: string) {
   px(g, x - 3, y - 7, 6, 5, '#e9d5a4');
   px(g, x - 2, y - 6, 4, 3, tag);
 }
-

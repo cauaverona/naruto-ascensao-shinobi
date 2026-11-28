@@ -25,8 +25,9 @@ export interface Jutsu {
   range: [number, number];
   effect: CombatEffect;
   power?: number;
-  visual?: 'ice';
-  onHit?: 'chill';
+  visual?: 'ice' | 'slash' | 'chakra';
+  onHit?: 'chill' | 'drain';
+  attackStat?: Stat;
   /** Atributo que treina com o uso. */
   trains: Stat[];
   evolvesTo?: string[];
@@ -73,6 +74,20 @@ export const JUTSUS: Record<string, Jutsu> = {
     acquisition: 'Tradição do clã Uchiha ou mestre de Katon', requirements: { Ninjutsu: 6, Chakra: 6 }, chakraCost: 12, staminaCost: 0, range: [1, 2], effect: 'damage', power: 18,
     trains: ['Ninjutsu', 'Chakra'],
     description: 'Uma grande esfera de fogo expelida pela boca.',
+  },
+  'juken-inicial': {
+    id: 'juken-inicial', name: 'Byakugan: Palma do Jūken', meaning: 'Golpe nos pontos de chakra', category: 'Taijutsu',
+    rank: 'C', clan: 'Hyūga', era: 'classico', acquisition: 'Prova da linhagem na Pedra de meditação',
+    requirements: { Percepção: 6, Taijutsu: 5 }, range: [0, 0], chakraCost: 8, staminaCost: 0,
+    effect: 'damage', power: 12, visual: 'chakra', onHit: 'drain', attackStat: 'Taijutsu', trains: ['Taijutsu', 'Percepção'],
+    description: 'Uma palma a curta distância. Se acertar fora da guarda, drena até 5 CH do alvo.',
+  },
+  'sharingan-leitura': {
+    id: 'sharingan-leitura', name: 'Sharingan: Leitura de abertura', meaning: 'Ataque guiado pelo primeiro tomoe', category: 'Taijutsu',
+    rank: 'C', clan: 'Uchiha', era: 'classico', acquisition: 'Prova da linhagem na Pedra de meditação',
+    requirements: { Percepção: 6, 'Controle de chakra': 5 }, range: [0, 1], chakraCost: 9, staminaCost: 0,
+    effect: 'damage', power: 13, visual: 'slash', attackStat: 'Percepção', trains: ['Percepção', 'Controle de chakra'],
+    description: 'Lê a postura adversária para atacar a abertura. A percepção aumenta o dano.',
   },
 };
 

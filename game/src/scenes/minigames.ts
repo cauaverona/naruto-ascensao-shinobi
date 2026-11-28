@@ -72,8 +72,9 @@ export class StrikeGame implements Minigame {
   private pos = 0; private dir = 1; private hits = 0; private total = 0; private zone = 0.2; private shake = 0; private last = '';
   constructor(private power: number, public title = 'Troncos de treino',
     public help = 'Aperte quando o marcador estiver na faixa dourada. 6 golpes.', private target: 'log' | 'bell' | 'track' = 'log',
-    private tactic?: Tactic) {
+    private tactic?: Tactic, affinity = 0) {
     if (tactic === 'rastreio') this.zone = 0.27;
+    this.zone += affinity * 0.03;
   }
   update(dt: number) {
     const tempo = this.tactic === 'bloqueio' ? 0.72 : 0.9;
@@ -245,7 +246,7 @@ export class ObservationGame implements Minigame {
   private elapsed = 0;
   private earned = 0;
 
-  constructor(private illusion: boolean, private rand: () => number) {
+  constructor(private illusion: boolean, private rand: () => number, private previewSeconds = 1.2) {
     this.title = illusion ? 'Reconhecer ilusões' : 'Leitura tática';
     this.help = illusion ? 'Memorize o selo verdadeiro, marcado com dois anéis. Depois aponte a posição.' :
       'Memorize a passagem livre entre os bloqueios. Depois aponte a posição.';
@@ -261,8 +262,8 @@ export class ObservationGame implements Minigame {
   update(dt: number) {
     if (this.done) return;
     this.elapsed += dt;
-    if (this.elapsed >= 4) this.choose(-1);
-    else if (this.elapsed >= 1.2) this.options = POSITIONS;
+    if (this.elapsed >= this.previewSeconds + 2.8) this.choose(-1);
+    else if (this.elapsed >= this.previewSeconds) this.options = POSITIONS;
   }
 
   choose(index: number) {
@@ -281,7 +282,7 @@ export class ObservationGame implements Minigame {
   render(g: G, w: number, h: number) {
     px(g, 0, 0, w, h, 'rgba(14,21,23,.65)');
     const x = Math.round(w / 2 - 39), y = Math.round(h * 0.13);
-    const visible = this.elapsed < 1.2 && !this.done;
+    const visible = this.elapsed < this.previewSeconds && !this.done;
     for (let i = 0; i < 4; i++) {
       const tx = x + (i % 2) * 42, ty = y + Math.floor(i / 2) * 34;
       panel(g, tx, ty, 35, 27);

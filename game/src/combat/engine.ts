@@ -10,7 +10,7 @@ import type { Personality, SpriteRole, Look } from '../data/characters';
 
 export type Zone = 0 | 1 | 2;
 export type Action =
-  | { type: 'taijutsu' } | { type: 'kunai' } | { type: 'shuriken' }
+  | { type: 'taijutsu'; heavy?: boolean } | { type: 'kunai' } | { type: 'shuriken' }
   | { type: 'advance' } | { type: 'retreat' } | { type: 'defend' } | { type: 'focus' }
   | { type: 'jutsu'; id: string } | { type: 'yield' };
 
@@ -191,7 +191,8 @@ function act(b: Battle, side: 0 | 1, a: Action, rng: Rng, ev: Ev[]) {
     b.lastPublic[side] = '';
     return;
   }
-  const cost = STAMINA_COST[approach ? 'advance' : a.type] ?? 0;
+  const heavy = !approach && a.type === 'taijutsu' && a.heavy === true;
+  const cost = (STAMINA_COST[approach ? 'advance' : a.type] ?? 0) + (heavy ? 2 : 0);
   const exhausted = me.stamina < cost;
   me.stamina = Math.max(0, me.stamina - cost);
   if (a.type !== 'jutsu') me.used[a.type] = (me.used[a.type] ?? 0) + 1;
@@ -238,7 +239,8 @@ function act(b: Battle, side: 0 | 1, a: Action, rng: Rng, ev: Ev[]) {
       let dash = false;
       if (b.distance > 0) { dash = true; b.distance = 0; ev.push({ t: 'move', who: side, distance: 0, dash: true }); }
       ev.push({ t: 'strike', who: side });
-      const base = 3 + me.stats.Força * 1.1 + me.stats.Taijutsu * 1.3 + rng.int(0, 3);
+      const base = (3 + me.stats.Força * 1.1 + me.stats.Taijutsu * 1.3 + rng.int(0, 3))
+        * (heavy ? (foe.status.defending ? 0.82 : 1.55) : 1);
       attack(b, side, 'taijutsu', base * (dash ? 0.8 : 1) * (exhausted ? 0.6 : 1), 0.82, rng, ev);
       b.lastPublic[side] = 'attack';
       return;
@@ -297,7 +299,7 @@ function castJutsu(b: Battle, side: 0 | 1, id: string, rng: Rng, ev: Ev[]) {
     b.lastPublic[side] = 'disguise';
   } else if (j.effect === 'damage') {
     ev.push({ t: 'technique', who: side, jutsu: id });
-    attack(b, side, 'jutsu', (j.power ?? 12) + me.stats.Ninjutsu, b.distance === 1 ? 0.8 : 0.68, rng, ev, j.onHit);
+    attack(b, side, 'jutsu', (j.power ?? 12) + me.stats[j.attackStat ?? 'Ninjutsu'], b.distance === 1 ? 0.8 : 0.68, rng, ev, j.onHit);
     b.lastPublic[side] = 'attack';
   }
 }
@@ -306,7 +308,7 @@ function learnTech(f: Fighter, tech: string) {
   if (!f.knowledge.includes(tech)) f.knowledge.push(tech);
 }
 
-function attack(b: Battle, side: 0 | 1, kind: 'taijutsu' | 'kunai' | 'shuriken' | 'jutsu', raw: number, baseHit: number, rng: Rng, ev: Ev[], onHit?: 'chill') {
+function attack(b: Battle, side: 0 | 1, kind: 'taijutsu' | 'kunai' | 'shuriken' | 'jutsu', raw: number, baseHit: number, rng: Rng, ev: Ev[], onHit?: 'chill' | 'drain') {
   const me = b.fighters[side];
   const foe = b.fighters[side === 0 ? 1 : 0];
   let crit = false;
@@ -361,6 +363,11 @@ function attack(b: Battle, side: 0 | 1, kind: 'taijutsu' | 'kunai' | 'shuriken' 
   if (onHit === 'chill' && !foe.status.defending) {
     foe.status.chilled = true;
     ev.push({ t: 'chill', who: foe.side });
+  }
+  if (onHit === 'drain' && !foe.status.defending && foe.chakra > 0) {
+    const drained = Math.min(5, foe.chakra);
+    foe.chakra -= drained;
+    ev.push({ t: 'text', text: `${foe.name} perdeu ${drained} CH com a palma do Jūken.` });
   }
   maybeCounter(b, foe, me, kind, rng, ev);
 }

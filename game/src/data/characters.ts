@@ -4,7 +4,7 @@ import { baseStats, type StatBlock, type Stat, type Element, type Rank } from '.
 import type { BandPosition } from './appearance';
 
 export type SpriteRole = 'player' | 'iruka' | 'emi' | 'gen' | 'naruto' | 'sasuke' | 'sakura';
-export type MapId = 'rua' | 'campo' | 'sala';
+export type MapId = 'rua' | 'campo' | 'sala' | 'estrada' | 'ondas' | 'floresta' | 'arena' | 'suna' | 'vale';
 export type Period = 0 | 1 | 2; // manhã, tarde, noite
 
 export interface Look {

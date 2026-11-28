@@ -32,4 +32,3 @@ export function formGuyTeam(c: Campaign, rng: Rng) {
   addLog(c, 'Guy confirmou a vaga na rotação de missões do Time 3.');
   return [preferred, partner];
 }
-

@@ -6,8 +6,16 @@ interface Style {
 }
 
 export const DUEL_STYLES: Record<string, Style> = {
+  haku: { title: 'Gelo e jogo de distância', strike: 'Palma veloz', accent: '#c3e7ec', opener: 'alcance' },
+  zabuza: { title: 'Pressão na neblina', strike: 'Corte da lâmina pesada', accent: '#b8c5c9', opener: 'pressao' },
+  floresta: { title: 'Cópias e arremessos', strike: 'Finta do batedor', accent: '#b8b993', opener: 'alcance' },
+  gaara: { title: 'Guarda de areia', strike: 'Investida de areia', accent: '#d4b075', opener: 'guarda' },
+  invasao: { title: 'Arremessos e recuos', strike: 'Corte de contenção', accent: '#b2b4a4', opener: 'alcance' },
+  akatsuki: { title: 'Cópias e lâmina pesada', strike: 'Varredura da lâmina', accent: '#9ab2d4', opener: 'finta' },
+  som: { title: 'Disfarce e pressão na trilha', strike: 'Investida da clareira', accent: '#a7a0cf', opener: 'finta' },
   naruto: { title: 'Pressão e improviso', strike: 'Investida turbulenta', accent: '#f0a75d', opener: 'pressao' },
   sasuke: { title: 'Fintas e arremessos', strike: 'Chute de giro', accent: '#a7b8ee', opener: 'finta' },
+  'sasuke-vale': { title: 'Katon e pressão na margem', strike: 'Chute de giro', accent: '#d99b87', opener: 'finta' },
   sakura: { title: 'Guarda e leitura', strike: 'Golpe de resposta', accent: '#eca3b2', opener: 'guarda' },
   ino: { title: 'Fintas e brechas', strike: 'Passo cruzado', accent: '#c8ace7', opener: 'finta' },
   shikamaru: { title: 'Distância e iscas', strike: 'Rasteira de corte', accent: '#c3c98a', opener: 'alcance' },
@@ -22,4 +30,3 @@ export const DUEL_STYLES: Record<string, Style> = {
   maki: { title: 'Guarda da ronda', strike: 'Chute de contenção', accent: '#e0ad74', opener: 'guarda' },
   daichi: { title: 'Corpo a corpo', strike: 'Direto de avanço', accent: '#cb9b80', opener: 'pressao' },
 };
-

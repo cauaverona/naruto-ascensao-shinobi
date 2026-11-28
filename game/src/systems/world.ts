@@ -259,7 +259,7 @@ export function retakeDay(c: Campaign): number | null {
 
 export function academyMorning(c: Campaign): 'enrollment' | 'lesson' | 'exam' | 'free' {
   if (c.quest.startsWith('matricula')) return 'enrollment';
-  if (c.rank === 'Genin' || c.lessonsDone.includes(c.day)) return 'free';
+  if (c.rank !== 'Estudante da Academia' || c.lessonsDone.includes(c.day)) return 'free';
   const retake = retakeDay(c);
   if (retake !== null) return c.day >= retake ? 'exam' : 'free';
   if (c.day >= EXAM_DAY) return 'exam';

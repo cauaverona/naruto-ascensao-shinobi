@@ -3,7 +3,7 @@ import { SUPPORT, type Tactic } from '../data/squad';
 import { CHARACTERS, GUY_TEAM } from '../data/characters';
 import type { Stat, StatBlock } from '../data/stats';
 import { addLog, type Campaign } from '../state/campaign';
-import { bond } from './relations';
+import { bond, teamAffinity } from './relations';
 
 export const GENIN_STAGES = [
   'encontro', 'sinos', 'suprimentos-ordem', 'suprimentos', 'entrega', 'tora-ordem', 'busca', 'retorno',
@@ -33,7 +33,7 @@ export const SUPPLIES = [
 ] as const;
 
 export function geninStage(c: Campaign): GeninStage | null {
-  if (c.rank !== 'Genin' || !c.flags['academia-concluida']) return null;
+  if ((c.rank !== 'Genin' && c.rank !== 'Chūnin') || !c.flags['academia-concluida']) return null;
   const value = GENIN_STAGES.find((stage) => stage === c.flags['genin-etapa']);
   if ((value === 'ondas' || value === 'concluida') && !c.flags['patrulha-concluida']) return 'selo-ordem';
   return value ?? 'encontro';
@@ -74,7 +74,13 @@ export function senseiId(c: Campaign) {
 
 export function teamMembers(c: Campaign) {
   return [...new Set(String(c.flags.equipe ?? '').split(','))]
-    .filter((id) => CHARACTERS[id]?.classmate || GUY_TEAM.some((member) => member === id)).slice(0, 2);
+    .filter((id) => CHARACTERS[id]?.classmate || GUY_TEAM.some((member) => member === id)).slice(0, 2)
+    .filter(id => id !== 'sasuke' || c.flags['classico-final'] !== 'partiu');
+}
+
+export function supportAffinity(c: Campaign, id: string) {
+  const member = c.npcs[id];
+  return member?.alive && teamMembers(c).includes(id) ? teamAffinity(member.bond) : 0;
 }
 
 export function beginGenin(c: Campaign) {
@@ -225,4 +231,3 @@ export function combatStats(c: Campaign): StatBlock {
   if (!('stat' in gear)) return c.stats;
   return { ...c.stats, [gear.stat]: c.stats[gear.stat] + gear.bonus };
 }
-

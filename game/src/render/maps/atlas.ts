@@ -21,14 +21,14 @@ interface Marker {
 
 interface AtlasInput {
   maps: Record<MapId, GameMap>;
-  player: { map: MapId; x: number; y: number };
+  player: { map: MapId; x: number; y: number; seen: string[] };
   objective: string;
   goal: MapGoal | null;
   missionSpots(map: MapId): Spot[];
   paint(g: CanvasRenderingContext2D, area: GameMap): void;
 }
 
-const AREAS: Record<MapId, string> = { rua: 'Rua da Academia', campo: 'Campo de Treino', sala: 'Sala de aula' };
+const KONOHA: MapId[] = ['rua', 'campo', 'sala'];
 const LEGEND: Record<MarkerKind, string> = {
   player: 'Você', objective: 'Objetivo', exit: 'Passagem', place: 'Local', mission: 'Missão',
 };
@@ -97,7 +97,7 @@ export function renderMapAtlas(root: HTMLElement, input: AtlasInput) {
     const goal = node('div', 'atlas-goal');
     goal.append(node('strong', '', 'Objetivo atual'), node('p', '', input.objective));
     if (input.goal && input.goal.map !== id) {
-      const go = node('button', 'atlas-go', `Ver ${AREAS[input.goal.map]}`);
+      const go = node('button', 'atlas-go', `Ver ${input.maps[input.goal.map].name}`);
       go.type = 'button';
       go.onclick = () => { showArea(input.goal!.map); areaButtons.get(input.goal!.map)?.focus(); };
       goal.append(go);
@@ -150,8 +150,9 @@ export function renderMapAtlas(root: HTMLElement, input: AtlasInput) {
     layout.append(mapColumn, panel);
     content.replaceChildren(heading, layout);
   };
-  for (const id of Object.keys(AREAS) as MapId[]) {
-    const button = node('button', '', AREAS[id]);
+  for (const id of Object.keys(input.maps) as MapId[]) {
+    if (!KONOHA.includes(id) && id !== input.player.map && !input.player.seen?.includes(id)) continue;
+    const button = node('button', '', input.maps[id].name);
     button.type = 'button';
     button.onclick = () => showArea(id);
     areaButtons.set(id, button);
@@ -160,4 +161,3 @@ export function renderMapAtlas(root: HTMLElement, input: AtlasInput) {
   root.append(nav, content);
   showArea(input.player.map);
 }
-

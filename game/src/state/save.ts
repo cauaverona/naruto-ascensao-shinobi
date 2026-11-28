@@ -4,6 +4,7 @@ import {
 } from './campaign';
 import { baseStats, maxVitals, RANKS, STATS, type StatBlock } from '../data/stats';
 import { bandPositionOf } from '../data/appearance';
+import { VALLEY_ENTRY, VALLEY_MAP_FLAG } from '../data/valley-map';
 
 export const SLOT_COUNT = 3;
 export const MAX_SAVE_BYTES = 1024 * 1024;
@@ -19,30 +20,27 @@ export interface StorageLike {
 /** Converte qualquer formato conhecido para o schema atual ou lança erro. */
 export function decode(raw: string): Campaign {
   const s = JSON.parse(raw);
-  if (!s || typeof s !== 'object') throw new Error('Save vazio');
-  if (s.schema === 1 || s.schema === 2) return migrateV2(s);
-  if (s.schema !== SCHEMA) throw new Error('Formato incompatível');
-  validate(s);
-  s.profile = { ...LOOK_DEFAULTS, ...s.profile, bandPosition: bandPositionOf(s.profile) };
-  s.version = GAME_VERSION;
+  if (!isRecord(s)) throw new Error('Save vazio');
+  const c = s.schema === 1 || s.schema === 2 ? migrateV2(s as unknown as V2Save) : s as unknown as Campaign;
+  if (c.schema !== SCHEMA || !validCampaign(c)) throw new Error('Formato incompatível');
+  c.profile = { ...LOOK_DEFAULTS, ...c.profile, bandPosition: bandPositionOf(c.profile) };
+  if (c.map === 'vale' && !c.flags[VALLEY_MAP_FLAG]) {
+    // O piso antigo tinha outra altura. Mantenha o jogador na mesma margem.
+    c.x = Math.max(VALLEY_ENTRY.x, Math.min(566, c.x));
+    c.y = VALLEY_ENTRY.y;
+    c.flags[VALLEY_MAP_FLAG] = true;
+  }
+  c.version = GAME_VERSION;
   // NPCs acrescentados ao mesmo formato estrutural preservam a progressão dos já existentes.
   for (const [id, initial] of Object.entries(npcInitial())) {
-    if (s.npcs[id]) continue;
-    s.npcs[id] = initial;
-    if (initial.rank === 'Estudante da Academia' && s.events?.['exame-colegas'] && s.flags && !s.flags[`exame:${id}`]) {
-      s.flags[`exame:${id}`] = 'aprovado';
+    if (c.npcs[id]) continue;
+    c.npcs[id] = initial;
+    if (initial.rank === 'Estudante da Academia' && c.events['exame-colegas'] && !c.flags[`exame:${id}`]) {
+      c.flags[`exame:${id}`] = 'aprovado';
       initial.rank = 'Genin';
     }
   }
-  return s as Campaign;
-}
-
-function validate(s: Campaign) {
-  const ok = typeof s.profile?.name === 'string' && s.profile.name.length > 0
-    && s.stats && STATS.every((k) => Number.isFinite(s.stats[k]))
-    && Number.isFinite(s.x) && Number.isFinite(s.y) && Number.isFinite(s.day)
-    && [0, 1, 2].includes(s.period) && Array.isArray(s.log) && s.npcs && typeof s.npcs === 'object';
-  if (!ok) throw new Error('Formato incompatível');
+  return c;
 }
 
 interface V2Save {
@@ -51,7 +49,10 @@ interface V2Save {
 }
 
 function migrateV2(old: V2Save): Campaign {
-  if (!old.profile?.name || !old.stats) throw new Error('Formato incompatível');
+  if (typeof old.profile?.name !== 'string' || !isRecord(old.stats)
+      || (old.log !== undefined && (!Array.isArray(old.log) || old.log.some(line => typeof line !== 'string')))) {
+    throw new Error('Formato incompatível');
+  }
   const stats = { ...baseStats(2), ...old.stats };
   const v = maxVitals(stats);
   const step = old.step ?? 0;
@@ -120,15 +121,19 @@ function numberRecord(value: unknown): boolean {
   return isRecord(value) && Object.values(value).every((n) => typeof n === 'number' && Number.isFinite(n) && n >= 0);
 }
 
-function validBackup(c: Campaign): boolean {
+function validCampaign(c: Campaign): boolean {
   return Number.isSafeInteger(c.day) && c.day >= 1
-    && ['rua', 'campo', 'sala'].includes(c.map) && ['up', 'down', 'left', 'right'].includes(c.dir)
+    && Number.isFinite(c.x) && Number.isFinite(c.y) && [0, 1, 2].includes(c.period)
+    && isRecord(c.stats) && STATS.every(stat => Number.isFinite(c.stats[stat]) && c.stats[stat] >= 0)
+    && ['rua', 'campo', 'sala', 'estrada', 'ondas', 'floresta', 'arena', 'suna', 'vale'].includes(c.map) && ['up', 'down', 'left', 'right'].includes(c.dir)
     && RANKS.includes(c.rank) && typeof c.quest === 'string' && typeof c.era === 'string'
     && ['facil', 'normal', 'dificil'].includes(c.settings?.difficulty)
     && ['fiel', 'equilibrado', 'alternativo'].includes(c.settings?.fidelity)
     && [c.actions, c.hp, c.chakra, c.stamina, c.ryo, c.xp, c.playtime].every((v) => Number.isFinite(v) && v >= 0)
-    && [c.reputation, c.seed, c.rng, c.wins, c.losses].every(Number.isFinite)
-    && ['clan', 'village', 'talent', 'past'].every((k) => typeof c.profile[k as keyof Campaign['profile']] === 'string')
+    && [c.reputation, c.wins, c.losses].every(Number.isFinite)
+    && [c.seed, c.rng].every(v => Number.isSafeInteger(v) && v >= 0 && v <= 0xffffffff)
+    && isRecord(c.profile) && typeof c.profile.name === 'string' && !!c.profile.name.trim()
+    && ['clan', 'village', 'talent', 'past', 'element', 'attribute'].every((k) => typeof c.profile[k as keyof Campaign['profile']] === 'string')
     && [c.statXp, c.jutsus, c.inventory, c.lessonScores].every(numberRecord)
     && isRecord(c.flags) && Object.values(c.flags).every((v) => ['string', 'number', 'boolean'].includes(typeof v))
     && isRecord(c.events) && Object.values(c.events).every((v) => typeof v === 'string')
@@ -136,8 +141,10 @@ function validBackup(c: Campaign): boolean {
     && Array.isArray(c.lessonsDone) && c.lessonsDone.every(Number.isSafeInteger)
     && Array.isArray(c.log) && c.log.every((entry) => !!entry && Number.isFinite(entry.day) && typeof entry.text === 'string')
     && isRecord(c.npcs) && Object.values(c.npcs).every((npc) => isRecord(npc)
-      && numberRecord(npc.stats) && numberRecord(npc.jutsus) && isRecord(npc.bond)
-      && Object.values(npc.bond).every(Number.isFinite) && Array.isArray(npc.memory));
+      && isRecord(npc.stats) && STATS.every(stat => typeof npc.stats[stat] === 'number' && Number.isFinite(npc.stats[stat]) && npc.stats[stat] >= 0)
+      && numberRecord(npc.jutsus) && isRecord(npc.bond)
+      && [npc.bond.amizade, npc.bond.rivalidade, npc.bond.respeito, npc.bond.confianca].every(Number.isFinite)
+      && Array.isArray(npc.memory) && npc.memory.every(line => typeof line === 'string'));
 }
 
 /** Importa nos mesmos slots e sem substituir uma jornada existente. */
@@ -146,7 +153,6 @@ export function importSlot(store: StorageLike, i: number, raw: string):
   let campaign: Campaign;
   try {
     campaign = decode(raw);
-    if (!validBackup(campaign)) return { ok: false, reason: 'invalid' };
   } catch {
     return { ok: false, reason: 'invalid' };
   }

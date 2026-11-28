@@ -18,4 +18,3 @@ export function trainingFor(stat: Stat) {
   const drills = Object.values(TRAINING);
   return drills.find((drill) => drill.stats[0] === stat) ?? drills.find((drill) => drill.stats[1] === stat);
 }
-

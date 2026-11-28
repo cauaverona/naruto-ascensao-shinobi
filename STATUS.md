@@ -1,7 +1,95 @@
 # Status do desenvolvimento
 
-**Versão atual:** 0.4.12, Fundação, Academia Ninja e Vida Genin do [Projeto Mestre](Projeto_Mestre.md).
-**Jogar:** abra `naruto_ascensao_v0.4.12.html` no navegador. Funciona offline.
+**Versão atual** 0.5.11, revisão de arte dos mapas recentes da Etapa 4 do [Projeto Mestre](Projeto_Mestre.md).
+**Jogar:** abra `naruto_ascensao_v0.5.11.html` no navegador. Funciona offline.
+
+## O que mudou na 0.5.11
+
+- Vale do Fim, Floresta da Morte, Estrada do Riacho, Vila da Ponte, Arena Chūnin e Fronteira da Areia receberam arte, paletas e caminhos próprios.
+- As colisões, entradas, saídas e interações de missão acompanham a nova arte. A abertura de saves antigos recupera posições bloqueadas em pontos caminháveis.
+- Os pergaminhos do Céu e da Terra e o embrulho avulso têm sprites próprios. O cenário usa versões menores para manter a proporção com os personagens.
+- Passaram 116 testes automatizados. No Chrome, foram conferidos os seis mapas no atlas, as travessias, os duelos, a retomada de saves e os retornos para Konoha.
+
+## O que mudou na 0.5.10
+
+- A lista de jornadas e a importação usam a mesma validação. Um save incompleto aparece como ilegível, e uma posição gravada dentro de uma parede ou fora do mapa é recuperada em um ponto caminhável.
+- Aulas, graduação, pistas, capturas e vitórias de missão gravam o progresso antes das falas de resultado. Um treino de luta interrompido pode ser retomado. O treino concluído grava a ação e o resultado juntos.
+- A travessia encerrada deixa de reaparecer na conversa de Tazuna. A carta dele liga o resultado da ponte ao Exame Chūnin. A volta de Sasuke ganha uma fala de encerramento, e a equipe ativa reflete o desfecho em que ele parte.
+- Passaram 102 testes automatizados. No Chrome em 1366 × 768, uma única campanha foi da criação e matrícula até o relato de Iruka no Vale. A verificação acelerou deslocamentos, simulou os comandos dos minijogos e ajustou os atributos do personagem de teste para os duelos do Clássico. Conferiu treino cancelado e extra, oito aulas, reprovação e repescagem, todas as missões Rank D e a progressão pelos 16 capítulos.
+- No Edge foram verificados a herança Yuki, a compra e troca de equipamentos, a retomada de treinos, a exportação de um JSON e a alcançabilidade dos pontos e saídas nos nove mapas. O atlas foi conferido em 1920, 1024 e 412 px. O Chrome e o Edge abriram o HTML offline e importaram jornadas, com compatibilidade confirmada para saves gerados pelas versões 0.2.0, 0.3.0, 0.4.4 e 0.5.9.
+
+## O que mudou na 0.5.9
+
+- O Vale ganhou cachoeira, laje de travessia, mirante para falar com a equipe e um abrigo opcional que recupera vida, chakra e resistência uma vez.
+- Sasuke sinaliza o Katon, os golpes e as aberturas do duelo. A reconciliação considera o vínculo e a decisão na torre. A vitória no duelo fica salva até o jogador confirmar o desfecho.
+- Iruka recebe um relato diferente conforme a decisão do jogador. O Diário registra o resultado e a entrega. Campanhas que já terminaram preservam seu final.
+- Passaram 97 testes automatizados. A revisão no Chrome para PC partiu de saves da v0.5.8, percorreu o Vale a pé e conferiu o retorno por conversa, o resgate após vitória, a partida no modo Fiel e a despedida sem duelo. Foram testados a rendição, a retomada depois de vencer, o relato adiado e a abertura do HTML offline.
+
+## O que mudou na 0.5.8
+
+- A busca por Sasuke começa com a reunião da equipe. Um aliado pode acompanhar o jogador pela passarela ou pelo vau e dar cobertura no duelo. O plano pode mudar até confirmar o rastro do outro lado do riacho.
+- A rota norte dá acesso a um selo ilusório no alarme. A rota sul permite ajudar Maki na margem. Cada ação opcional reduz a resistência inicial da sentinela. O adversário sinaliza o disfarce, a investida, os arremessos e a abertura.
+- O Diário registra o caminho, o aliado e a preparação. O encontro a leste libera a viagem ao Vale do Fim. Saves que já chegaram ao Vale continuam a partir dali.
+- Passaram 91 testes automatizados. No Chrome para PC, as duas rotas foram percorridas a pé com saves da v0.5.7. A revisão confirmou troca de rota, saída e retomada com Iruka, recarga antes e depois do duelo, rendimento da preparação em combate, rendição e nova tentativa, e entrada no Vale. O HTML abriu offline.
+
+## O que mudou na 0.5.7
+
+- O Ichiraku e a ronda da praça dão pistas que podem ser investigadas em qualquer ordem. O sensei ajuda a equipe a preparar a retirada de Naruto.
+- É possível guiar Naruto pelos becos, usando o sinal da lanterna, ou conter Kisame para abrir caminho pela praça. Kisame dá sinais antes de formar cópias, erguer a lâmina pesada e baixar a guarda.
+- O relatório muda conforme a rota e registra a ajuda na relação com Naruto. Pistas, escolta e rota aparecem no Diário e ficam salvas entre sessões.
+- Passaram 86 testes automatizados. No Chrome para PC, as duas rotas foram percorridas a pé com saves da v0.5.6. A revisão conferiu troca de plano, sinal incorreto, troca de mapa sem duplicar Naruto, retomada após recarregar, rendição, vitória em sete rodadas e avanço à Equipe de resgate. O HTML abriu offline.
+
+## O que mudou na 0.5.6
+
+- O posto oeste e a vigia da duna sul podem ser visitados em qualquer ordem. A recepção na fronteira leva em conta como a equipe evacuou Konoha. A vigia ensina a reconhecer uma abertura na guarda de areia.
+- Acordo com Gaara leva à mensageira e à carta de passagem. Vitória no duelo leva ao posto de socorro, que trata a equipe e entrega um registro de feridos. Tsunade reage à informação que o jogador leva à casa de chá.
+- O mapa indica o próximo contato e o Diário registra quem já foi consultado. Campanhas que já chegaram à busca por Tsunade retomam pela pista correspondente à decisão salva.
+- Passaram 82 testes automatizados. No Chrome para PC, as duas rotas foram percorridas a pé a partir de saves da v0.5.5. Foram conferidos adiamento, recarga durante a missão, rendição e nova tentativa, vitória em seis rodadas, recuperação no posto de socorro e avanço ao próximo capítulo. O HTML abriu offline.
+
+## O que mudou na 0.5.5
+
+- Após a final do Exame Chūnin, a equipe pode preparar os becos laterais ou liberar o corredor central em combate. A guarda permite trocar de rota enquanto a passagem ainda está pendente.
+- Os moradores do mercado e da Academia seguem o jogador até a baliza e o posto de socorro. A ordem é livre. O progresso de cada grupo aparece no Diário e persiste após recarregar.
+- O invasor anuncia os arremessos e os momentos em que baixa a guarda. O relatório encerra a evacuação, fortalece os vínculos da equipe e libera a viagem à fronteira de Suna.
+- Passaram 77 testes automatizados. No Chrome em 1440 × 850, foram percorridas as duas rotas a pé com um save da v0.5.4. Foram conferidos sinal incorreto, rendição, troca de rota, recarga durante a escolta e avanço imediato ou adiado até Suna. O HTML abriu offline.
+
+## O que mudou na 0.5.4
+
+- Gaara anuncia a guarda de areia, a investida pesada e a abertura quando baixa a defesa. A estratégia de reagir aos avisos foi testada em 80 simulações com um perfil Genin.
+- O Diário identifica os pergaminhos do Céu e da Terra como pendentes, em posse ou entregues à torre. Também mostra a reserva usada na troca e recupera os estados de campanhas antigas pelo capítulo salvo.
+- Passaram 74 testes automatizados. No Chrome para PC, a troca e a entrega atualizaram o Diário de um save da v0.5.3. A final foi vencida em sete rodadas usando os avisos, a promoção persistiu após recarregar e o HTML abriu offline.
+
+## O que mudou na 0.5.3
+
+- A prova escrita sorteia cinco situações a cada tentativa entregue, exige quatro acertos e explica os erros no fim. O Diário mostra a melhor nota.
+- A Floresta da Morte tem um riacho com duas travessias. A passarela exige observar a patrulha e o vau exige equilíbrio com chakra. Aliados que dominam a tática adequada dão mais margem no desafio, e a confiança aumenta o bônus.
+- A equipe pode conseguir o pergaminho da Terra em duelo ou negociar depois de encontrar um pergaminho do Céu avulso. A banca explica a decisão sobre a patente após a final.
+- O batedor do Som anuncia o preparo das cópias, os arremessos e a recuperação de chakra. O equilíbrio foi exercitado em 80 simulações com atributos de Genin.
+- Passaram 72 testes automatizados. No Chrome em 1440 × 850, foram conferidos abandono, reprovação e nova tentativa na prova, as duas travessias, troca, rendição e vitória no duelo. Um save antigo dentro do riacho foi recuperado na margem, e a versão final abriu offline.
+
+## O que mudou na 0.5.2
+
+- No cais, a equipe encontra duas pistas em ordem livre e registra cada uma no Diário. Antes do duelo na ponte, o jogador evacua os dois grupos de trabalhadores. Um rastreador de confiança dá mais tempo para observar a rota segura na neblina.
+- Haku e Zabuza anunciam investidas especiais e aberturas. A travessia e o descanso depois do duelo com Haku recuperam a equipe. Os recursos usados em combate continuam saindo do estoque.
+- Em 80 simulações por adversário, o perfil de teste Genin venceu Haku em 80 e Zabuza em 75 usando as pistas. Repetir taijutsu diante de Zabuza venceu em 39 das mesmas 80.
+- Passaram 67 testes automatizados. No Chrome em 1440 × 850, foram conferidos os objetivos em ordem livre, adiamento, os dois duelos com atributos de Genin, a evacuação, a retomada de um save anterior e a abertura offline.
+
+## O que mudou na 0.5.1
+
+- Dezesseis capítulos conectam a travessia, a ponte, o Exame Chūnin, a invasão, a fronteira de Suna, o retorno de Tsunade e o Vale do Fim. A equipe pode voltar a Konoha para se preparar e retomar a viagem com Iruka.
+- A banca promove por desempenho e decisão de liderança. A rota de Sasuke considera o modo de história, a decisão na floresta e a confiança acumulada.
+- Hyūga e Uchiha podem despertar suas primeiras técnicas na Pedra de meditação conforme o avanço e os atributos exigidos.
+- Passaram 65 testes automatizados. No Chrome em 1440 × 850, uma campanha de teste percorreu os 16 capítulos com deslocamentos acelerados e atributos elevados. Foram conferidos erro na prova, derrota e revanche, retorno a Konoha, recarga, promoção e um final alternativo. A build abriu offline.
+
+## O que mudou na 0.5.0
+
+- Depois da decisão sobre a escolta, Tazuna oferece a partida no momento escolhido pelo jogador. A equipe percorre a Estrada do Riacho, investiga os rastros e faz acampamento após a ponte. O progresso fica no Diário e é preservado ao retornar a Konoha.
+- Passaram 61 testes automatizados. No Chrome em 1440 × 850, teclado e mouse foram usados para conferir a persistência dos vínculos, o bônus no teste dos sinos, a partida adiada, a caminhada até o acampamento, a recarga e o retorno a Konoha. O HTML final abriu offline.
+
+## O que mudou na 0.4.13
+
+- Quatorze colegas oferecem dois assuntos e uma conversa particular desbloqueada pela confiança. As respostas dão amizade ou respeito e a Ficha registra os momentos compartilhados.
+- Companheiros selecionados para apoiar ampliam a faixa no teste dos sinos e reduzem a resistência inicial da rival no duelo da ronda. A aba Relações mostra os requisitos e bônus.
 
 ## O que mudou na 0.4.12
 
@@ -192,7 +280,7 @@ A campanha agora acontece no mesmo mundo da cena de referência da 0.2.2. Antes,
 
 ## Pendente
 
-- **Continuação do Clássico:** viagem ao País das Ondas e arcos seguintes.
+- **Polimento do Clássico:** ampliar provas e encontros de cada arco, equilibrar duelos com personagens em progressão normal e desenvolver as linhagens restantes.
 - **Mapa mundial:** o menu já mostra o mapa local de cada área jogável de Konoha.
 
 ## Bugs conhecidos

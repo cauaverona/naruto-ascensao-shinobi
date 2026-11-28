@@ -2,7 +2,7 @@
 import { Rng } from '../core/rng';
 import { available, resolveRound, type Action, type Battle, type Ev } from '../combat/engine';
 import { DUEL_STYLES } from '../combat/styles';
-import { chooseAction } from '../combat/ai';
+import { chooseAction, duelIntent } from '../combat/ai';
 import { JUTSUS } from '../data/jutsus';
 import { drawActor, portrait, type Actor, type CombatPose } from '../render/sprites';
 import { px } from '../render/gfx';
@@ -22,6 +22,7 @@ export interface BattleSetup {
   actors: [Actor, Actor];
   title: string;
   training: boolean;
+  maxGroundY?: number;
   /** Desenha o cenário da arena (coordenadas da tela lógica). */
   background(g: G, w: number, h: number): void;
 }
@@ -64,6 +65,7 @@ export class BattleScene {
   }
 
   private pose(): Pose { return { dx: 0, dy: 0, alpha: 1, frame: -1 }; }
+  private groundY(h: number) { return Math.min(Math.round(h * 0.7), this.setup.maxGroundY ?? Infinity); }
   private zoneSep(z: number) { return [62, 128, 196][z]; }
   /** Escala dos lutadores: 2x quando há espaço, 1x em telas estreitas (retrato). */
   private get big() { return this.lastW >= 320 ? 2 : 1; }
@@ -83,7 +85,7 @@ export class BattleScene {
   }
 
   private posOf(side: number, w: number, h: number) {
-    const cx = w / 2, ground = Math.round(h * 0.7);
+    const cx = w / 2, ground = this.groundY(h);
     const half = Math.min(this.sep * (this.big / 2) + (this.big === 1 ? 14 : 0), w * 0.42) / 2;
     const p = this.poses[side];
     return { x: Math.round(cx + (side === 0 ? -half : half) + p.dx * (side === 0 ? 1 : -1)), y: ground + p.dy };
@@ -105,7 +107,7 @@ export class BattleScene {
     const sx = !this.reducedMotion.matches && this.shake ? Math.round((Math.random() - 0.5) * this.shake) : 0;
     const sy = !this.reducedMotion.matches && this.shake ? Math.round((Math.random() - 0.5) * this.shake) : 0;
     g.drawImage(this.bgCache, sx, sy);
-    const ground = Math.round(h * 0.7);
+    const ground = this.groundY(h);
     // Faixa de chão da arena
     g.fillStyle = 'rgba(0,0,0,.18)';
     g.fillRect(0, ground + 6, w, 3);
@@ -255,9 +257,10 @@ export class BattleScene {
     (box.querySelector('button:not(:disabled)') as HTMLButtonElement | null)?.focus();
   }
 
-  private choose(): Promise<Action> {
+  private choose(cue?: string): Promise<Action> {
     this.menu('main');
-    if (!this.b.round && this.setup.training) this.say('As armas usadas em treino voltam ao estoque após a luta.');
+    if (cue) this.say(cue);
+    else if (!this.b.round && this.setup.training) this.say('As armas usadas em treino voltam ao estoque após a luta.');
     else if (this.b.distance === 2 && !this.b.fighters[0].status.behind) this.say('Sua vez. De longe, taijutsu só aproxima. Shuriken tem mais alcance.');
     else if (!this.b.round) this.say('Sua vez. Defender reduz o dano e pode abrir um contra-ataque.');
     return new Promise((r) => (this.resolveChoice = r));
@@ -278,8 +281,9 @@ export class BattleScene {
     vs.classList.remove('show'); void vs.offsetWidth; vs.classList.add('show');
     await wait(1700);
     while (!this.b.over) {
-      const mine = await this.choose();
-      const theirs = chooseAction(this.b, 1, this.rng);
+      const intent = duelIntent(this.b, 1);
+      const mine = await this.choose(intent?.cue);
+      const theirs = intent?.action ?? chooseAction(this.b, 1, this.rng);
       const ev = resolveRound(this.b, [mine, theirs]);
       await this.play(ev);
       this.displayHp = this.b.fighters.map((f) => f.hp);
@@ -484,4 +488,3 @@ export class BattleScene {
     });
   }
 }
-

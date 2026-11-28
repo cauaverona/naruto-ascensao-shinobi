@@ -3,18 +3,20 @@ import './styles.css';
 import { CHARACTERS, CLASSMATES, GUY_TEAM, type MapId, type Period } from './data/characters';
 import { accessorySet, bandPositionOf, BAND_POSITIONS, OUTFITS, SCARVES } from './data/appearance';
 import { origin, clanByName } from './data/clans';
-import { ACADEMY_STATS, combatPower, maxVitals, type Stat } from './data/stats';
+import { ACADEMY_STATS, baseStats, combatPower, maxVitals, type Stat } from './data/stats';
 import { LESSONS, PERIODS, WEEKDAYS, EXAM_DAY, EXAM_MINIMUM, graduationGrade, ITEMS, QUESTIONS } from './data/academy';
 import { MAKI_SPOT, SEAL_CLUES, SEAL_DESTINATIONS } from './data/genin-assignments';
 import { MENTOR_LESSON, SUPPORT, type Tactic } from './data/squad';
 import { HYOTON, JUTSUS, type Jutsu } from './data/jutsus';
 import { TRAINING, trainingFor, type TrainingId } from './data/training';
-import { awakenHyoton, HYOTON_TRIAL_COST, HYOTON_TRIAL_SCORE, yukiTrial } from './systems/heritage';
+import { awakenHyoton, awakenOcular, HYOTON_TRIAL_COST, HYOTON_TRIAL_SCORE, ocularTrial, yukiTrial } from './systems/heritage';
 import { newCampaign, addLog, GAME_VERSION, LOOK_DEFAULTS, type Campaign, type Profile, type Settings } from './state/campaign';
 import { deleteSlot, importSlot, readSlot, writeSlot, LAST_SLOT_KEY, MAX_SAVE_BYTES, SLOT_COUNT } from './state/save';
 import { restoreAll, applyTraining, learn, level, clampVitals, practice, statCost, train } from './systems/progression';
 import { guyPreference, requestGuyTeam } from './systems/team-guy';
 import { bond, bondLabel } from './systems/relations';
+import { supportAffinity } from './systems/genin';
+import { answerConversation, conversation } from './content/conversations';
 import { academyMorning, dueEvents, extraTrainingLeft, resolveEvent, retakeDay, sleep, startAfternoon, spendAction, spendExtraTraining } from './systems/world';
 import {
   acceptMission, beginGenin, checkPatrolPost, collectSupply, combatStats, deferMission, equippedGear, finishGenin,
@@ -25,7 +27,7 @@ import {
 import { talk } from './content/dialogue';
 import { KunaiGame, StrikeGame, ChakraGame, SealsGame, ObservationGame, JutsuPracticeGame, grade, type Minigame } from './scenes/minigames';
 import { ToraGame } from './scenes/tora';
-import { drawAssignmentProp, drawSupply, drawTora, drawTrack } from './render/mission-art';
+import { drawAssignmentProp, drawExamScroll, drawFieldExamScroll, drawSupply, drawTora, drawTrack, type ExamScroll } from './render/mission-art';
 import { BattleScene } from './scenes/battle';
 import { makeFighter, startBattle } from './combat/engine';
 import { randomSeed, Rng } from './core/rng';
@@ -35,12 +37,41 @@ import { audio } from './audio';
 import { renderMapAtlas, type MapGoal } from './render/maps/atlas';
 import { blocked, type GameMap } from './render/maps/types';
 import { buildStreet } from './render/maps/street';
+import { buildWavesRoad } from './render/maps/road';
+import { ROAD_CAMP, ROAD_ENTRY, ROAD_SENSEI, ROAD_TAZUNA, ROAD_TEAM, ROAD_TRACKS, roadRecoveryPoint } from './data/waves-road-map';
+import { VILLAGE_DECK, VILLAGE_ENTRY, VILLAGE_SENSEI, VILLAGE_TEAM, VILLAGE_ZABUZA, villageRecoveryPoint } from './data/waves-village-map';
+import { ARENA_ENTRY, ARENA_RING, ARENA_SENSEI, ARENA_TEAM, arenaRecoveryPoint } from './data/chunin-arena-map';
+import { SUNA_ENTRY, SUNA_SENSEI, SUNA_SERVICE_GATE, SUNA_TEAM, sunaRecoveryPoint } from './data/sand-frontier-map';
+import { departForWaves, followRoadTracks, pendingWaveStops, reachRoadCamp, recordWaveStop, wavesStage } from './systems/waves';
+import { STORY_OPPONENTS, type Chapter } from './data/classic';
+import { VALLEY_ENTRY, VALLEY_MAP_FLAG } from './data/valley-map';
+import { FOREST_ENTRY, FOREST_SENSEI, FOREST_TEAM, forestRecoveryPoint } from './data/forest-map';
+import { canReconcile, classicChapter, resolveChapter } from './systems/classic';
+import { buildClassicArea, CLASSIC_ENTRY } from './render/maps/classic';
+import { buildExamForest } from './render/maps/forest';
+import { FOREST_ROUTES, WRITTEN_PASS, WRITTEN_QUESTIONS, type ForestRoute } from './data/chunin';
+import { completeForestRoute, findSpareScroll, forestExamSpots, forestRoute, forestScrollStatus, gradeWrittenExam, writtenExam, writtenPassed } from './systems/chunin';
+import { GROUP_IDS, INVASION_GROUPS, INVASION_ROUTES, INVASION_SHELTER, type InvasionGroup } from './data/invasion';
+import { atEvacuationCheckpoint, chooseInvasionRoute, escortGroup, evacuationCount, groupSafe, invasionReady, invasionRoute,
+  invasionSpots, reachEvacuationCheckpoint, rescueEvacuationGroup, secureInvasionRoute, startEvacuation } from './systems/invasion';
+import { pendingSunaGuards, recordSunaGuard, recordSunaLead, SUNA_GUARDS, sunaLead, sunaLeadReady } from './systems/suna';
+import { AKATSUKI_BRIEFING, AKATSUKI_CLUES, AKATSUKI_PASSAGE, AKATSUKI_ROUTES, akatsukiRoute, akatsukiSpots,
+  chooseAkatsukiRoute, finishNarutoEscort, NARUTO_PICKUP, narutoSafety, openAkatsukiPassage, pendingAkatsukiClues,
+  recordAkatsukiClue, startNarutoEscort } from './systems/akatsuki';
+import { RESCUE_BRIEFING, RESCUE_EXIT, RESCUE_PATHS, chooseRescueRoute, clearRescueSentinel, confirmRescueTrail,
+  formRescueTeam, prepareRescueApproach, rescueGuide, rescueRoute, rescueSpots } from './systems/rescue';
+import { VALE_ENDINGS, VALE_LOOKOUT, VALE_REPORT, VALE_REST, recordValleyDuel, restAtValley, turnInValleyReport,
+  valleyEnding, valleyReportPending, valleySpots, visitValleyLookout } from './systems/valley';
 import { buildField } from './render/maps/field';
 import { buildClassroom } from './render/maps/classroom';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const calm = matchMedia('(prefers-reduced-motion: reduce)');
-const maps: Record<MapId, GameMap> = { rua: buildStreet(), campo: buildField(), sala: buildClassroom() };
+const maps: Record<MapId, GameMap> = {
+  rua: buildStreet(), campo: buildField(), sala: buildClassroom(), estrada: buildWavesRoad(),
+  ondas: buildClassicArea('ondas'), floresta: buildExamForest(), arena: buildClassicArea('arena'),
+  suna: buildClassicArea('suna'), vale: buildClassicArea('vale'),
+};
 
 // ——— Estado de sessão ———
 let c: Campaign | null = null;
@@ -53,6 +84,7 @@ const held = new Set<string>();
 interface Npc { id: string; actor: Actor; name: string; x: number; y: number; dir: Dir; frame: number; route: [number, number][]; idx: number; rest: number; dist: number }
 let npcs: Npc[] = [];
 let contact: { kind: 'npc'; npc: Npc } | { kind: 'spot'; id: string; label: string } | null = null;
+let escortTrail: { x: number; y: number; dir: Dir }[] = [];
 
 // ——— Telas ———
 type Screen = 'title' | 'slots' | 'create' | 'game';
@@ -437,7 +469,20 @@ function startGame(i: number, camp: Campaign, raw: string | null) {
   show('game');
   shownMap = null;
   // Aulas e minijogos começam do mesmo checkpoint após fechar o navegador.
-  if (c.map === 'sala') enterMap('rua', 450, 204, 'down', false);
+  if (c.map === 'sala' && classicChapter(c)?.id !== 'escrita') enterMap('rua', 450, 204, 'down', false);
+  else if (c.map === 'vale' && valleyReportPending(c)) enterMap('rua', 470, 238, 'down', false);
+  else if (c.map === 'floresta' && blocked(maps.floresta, c.x, c.y)) {
+    const bank = forestRecoveryPoint(c.x, c.y);
+    enterMap('floresta', bank.x, bank.y, 'right', false);
+  }
+  else if (blocked(maps[c.map], c.x, c.y)) {
+    const entry = c.map === 'rua' ? { x: 117, y: 437 } : c.map === 'campo' ? { x: 596, y: 240 }
+      : c.map === 'sala' ? { x: 240, y: 230 } : c.map === 'estrada' ? roadRecoveryPoint(c.x, c.y)
+        : c.map === 'vale' ? VALLEY_ENTRY : c.map === 'ondas' ? villageRecoveryPoint(c.x, c.y)
+          : c.map === 'arena' ? arenaRecoveryPoint(c.x, c.y)
+          : c.map === 'suna' ? sunaRecoveryPoint(c.x, c.y) : CLASSIC_ENTRY;
+    enterMap(c.map, entry.x, entry.y, c.map === 'arena' ? 'up' : 'right', false);
+  }
   else enterMap(c.map, c.x, c.y, c.dir, false);
   if (c.rank === 'Genin' && !geninStage(c)) {
     for (const event of dueEvents(c, 'dawn').filter((e) => e.id === 'formacao-equipes')) resolveEvent(c, event);
@@ -473,9 +518,18 @@ function placeNpcs() {
   const stage = geninStage(c);
   const rally = stage ? mentorLocation(stage) : null;
   const team = stage ? teamMembers(c) : [];
+  const chapter = classicChapter(c);
+  const away = chapter?.area === c.map && ['ondas', 'floresta', 'arena', 'suna', 'vale'].includes(c.map);
+  const search = chapter?.id === 'som' && c.map === 'floresta';
+  const guide = search ? rescueGuide(c) : '';
   const deferred = missionDeferred(c);
   for (const d of Object.values(CHARACTERS)) {
     if (c.npcs[d.id]?.alive === false) continue;
+    if (search && (d.id === senseiId(c) || d.id === guide)) continue;
+    if (c.map === 'vale' && chapter?.id === 'vale' && d.id === valleyWitness(c)) continue;
+    if (d.id === 'iruka' && c.map === 'rua' && valleyReportPending(c)) continue;
+    if (d.id === 'naruto' && chapter?.id === 'akatsuki' && (c.map === 'rua' || narutoSafety(c) !== 'aguardando')) continue;
+    if (d.id === 'sasuke' && c.flags['classico-final'] === 'partiu') continue;
     let spot: { x: number; y: number; dir?: Dir; route?: [number, number][]; map?: MapId } | undefined;
     if (c.day === 1 && c.period === 0 && DAY1[d.id]) spot = { ...DAY1[d.id], map: 'rua' };
     else spot = d.schedule[c.period as Period];
@@ -493,13 +547,29 @@ function placeNpcs() {
       spot = { map: 'campo', ...MAKI_SPOT, dir: 'down' };
     }
     if (stage && d.id === 'iruka') spot = { map: 'rua', x: 458, y: 222, dir: 'down' };
+    if (c.map === 'estrada' && wavesStage(c) && (member >= 0 || d.id === senseiId(c))) {
+      spot = { map: 'estrada', ...(ROAD_TEAM[member] ?? ROAD_SENSEI), dir: 'down' };
+    }
+    if (away && (member >= 0 || d.id === senseiId(c))) {
+      if (d.id === 'sasuke' && (chapter?.id === 'som' || chapter?.id === 'vale')) continue;
+      const position = c.map === 'floresta'
+        ? FOREST_TEAM[member] ?? FOREST_SENSEI
+        : c.map === 'ondas' ? VILLAGE_TEAM[member] ?? VILLAGE_SENSEI
+        : c.map === 'arena' ? ARENA_TEAM[member] ?? ARENA_SENSEI
+        : c.map === 'suna' ? SUNA_TEAM[member] ?? SUNA_SENSEI
+          : { x: member >= 0 ? 80 + member * 23 : 70, y: member >= 0 ? 202 : 127 };
+      spot = { map: c.map, ...position, dir: 'down' };
+    }
     if (!spot || (spot.map ?? 'rua') !== c.map) continue;
     if (c.map === 'sala' && !lessonMode) continue;
     // Naruto só aparece no Ichiraku à noite depois da pegadinha se não estiver limpando o monumento.
     npcs.push({ id: d.id, actor: actorFor(d.id), name: d.name, x: spot.x, y: spot.y, dir: spot.dir ?? 'down', frame: -1, route: spot.route ?? [], idx: 0, rest: 1.5, dist: 0 });
   }
-  if (stage === 'ondas' && c.map === 'rua') {
+  if ((stage === 'ondas' || wavesStage(c)) && c.map === 'rua') {
     npcs.push({ id: 'tazuna', name: 'Tazuna', actor: TAZUNA, ...TAZUNA_SPOT, dir: 'down', frame: -1, route: [], idx: 0, rest: 0, dist: 0 });
+  }
+  if (c.map === 'estrada' && wavesStage(c)) {
+    npcs.push({ id: 'tazuna', name: 'Tazuna', actor: TAZUNA, ...ROAD_TAZUNA, dir: 'left', frame: -1, route: [], idx: 0, rest: 0, dist: 0 });
   }
 }
 
@@ -538,8 +608,33 @@ function mentorLocation(stage: GeninStage): (Pick<Npc, 'x' | 'y' | 'dir'> & { ma
   return null;
 }
 
+function chapterSpots(camp: Campaign, chapter: Chapter) {
+  const chapterSpot = { id: `classico-${chapter.id}`, label: chapter.title, x: chapter.x, y: chapter.y, r: 24 };
+  if (chapter.id === 'invasao') return invasionSpots(camp, chapterSpot);
+  if (chapter.id === 'akatsuki') return akatsukiSpots(camp, { ...chapterSpot, id: 'akatsuki-kisame', label: 'Kisame na praça' });
+  if (chapter.id === 'som') return rescueSpots(camp, { ...chapterSpot, id: 'resgate-sentinela', label: 'Sentinela na clareira' });
+  if (chapter.id === 'vale') return valleySpots(camp, { ...chapterSpot, label: 'Sasuke na laje do outro lado' });
+  if (chapter.id === 'gaara') {
+    const guards = pendingSunaGuards(camp);
+    if (guards.length) return guards;
+  }
+  if (chapter.id === 'tsunade' && !sunaLeadReady(camp)) return [sunaLead(camp)];
+  const waves = pendingWaveStops(camp, chapter.id);
+  if (waves.length) return waves;
+  const forest = forestExamSpots(camp, chapter.id);
+  if (chapter.id === 'ceu' && forest) return forest;
+  return [chapterSpot, ...(forest ?? [])];
+}
+
 function missionSpots(area = c?.map) {
   if (!c) return [];
+  if (area === 'rua' && valleyReportPending(c)) return [VALE_REPORT];
+  const chapter = classicChapter(c);
+  if (chapter && chapter.area === area) return chapterSpots(c, chapter);
+  if (area === 'estrada') {
+    const stage = wavesStage(c);
+    return stage === 'estrada' ? [ROAD_TRACKS] : stage === 'acampamento' ? [ROAD_CAMP] : [];
+  }
   const stage = geninStage(c);
   if (area === 'rua' && stage === 'selo-pistas') return [...SEAL_CLUES];
   if (area !== 'campo') return [];
@@ -579,9 +674,37 @@ async function offerMission(camp: Campaign, offer: MissionOffer, who: { name: st
 
 async function talkToTazuna(who: { name: string; actor: Actor }) {
   const camp = c;
-  if (!camp || geninStage(camp) !== 'ondas') return;
+  if (!camp) return;
+  const trip = wavesStage(camp);
+  if (trip) {
+    const chapter = classicChapter(camp);
+    if (trip === 'pausa' && chapter?.id !== 'barco') {
+      await say(who, [chapter?.area === 'ondas'
+        ? 'A travessia já ficou para trás. Se quiserem voltar à ponte, falem com Iruka. Ele sabe onde a equipe parou.'
+        : 'A ponte ficou em pé. Os trabalhadores já voltaram à obra e mandaram agradecer por terem chegado juntos à margem.']);
+      return;
+    }
+    if (camp.map === 'estrada') {
+      await say(who, [trip === 'pausa' ? 'O barco está amarrado perto do acampamento. Podemos atravessar quando a equipe estiver pronta.'
+        : 'Costumo cruzar o riacho com a carroça. Olhem como as rodas marcaram a saída da estrada.']);
+      return;
+    }
+    const choice = await say(who, [
+      trip === 'partida' && camp.flags['ondas-postura'] === 'investigar'
+        ? 'Você pediu detalhes da rota. Vamos cruzar um riacho por uma ponte de madeira e parar antes da margem. Fiquem atentos a desvios recentes.'
+        : 'Posso levar vocês até a trilha do riacho. A primeira parada fica depois da ponte de madeira.',
+    ], [{ id: 'partir', label: trip === 'partida' ? 'Partir com a equipe' : 'Voltar à estrada' },
+      { id: 'depois', label: 'Ficar em Konoha por enquanto' }]);
+    if (choice !== 'partir') return;
+    departForWaves(camp);
+    enterMap('estrada', ROAD_ENTRY.x, ROAD_ENTRY.y, 'right', false);
+    save();
+    return;
+  }
+  if (geninStage(camp) !== 'ondas') return;
   const decision = await say(who, [
     'Sou Tazuna. Estou construindo uma ponte no País das Ondas e preciso de escolta até lá.',
+    'Quando falta barco, falta comida. A ponte vai deixar minha vila comprar mantimentos sem depender de quem controla a travessia.',
     'No papel é uma missão de rank C. Se quiserem conferir o percurso, esta é a hora.',
   ], [
     { id: 'investigar', label: 'Pedir detalhes sobre o risco' },
@@ -592,7 +715,7 @@ async function talkToTazuna(who: { name: string; actor: Actor }) {
     placeNpcs();
     save();
     await say(who, [decision === 'investigar' ? 'Tudo bem. Conto mais sobre o caminho antes da partida.' : 'Tenho muita coisa para terminar na ponte. Conto com sua equipe.',
-      'Vida Genin concluída. Sua decisão ficou registrada no diário.']);
+      'Vida Genin concluída. Volte a falar comigo quando sua equipe estiver pronta para sair.']);
   }
 }
 
@@ -619,14 +742,14 @@ async function talkToSensei(who: { name: string; actor: Actor }) {
       const ready = await say(who, ['Há dois sinos. Escolha um apoio e faça pelo menos duas aproximações limpas.'],
         [{ id: 'pronto', label: 'Começar o teste' }, { id: 'depois', label: 'Preparar primeiro' }]);
       if (ready !== 'pronto') return;
-      const ally = await chooseSupport(active, 'Quem vai abrir espaço para você?');
+      const ally = await chooseSupport(active, 'Quem vai abrir espaço para você?', 'Fazer a aproximação sozinho', 'sinos');
       const help = SUPPORT[ally];
       if (help) await say({ name: CHARACTERS[ally].name, actor: actorFor(ally) }, [
         help.tactic === 'bloqueio' ? 'Vou fechar a lateral. Você vai ter mais tempo para passar.' :
           help.tactic === 'rastreio' ? 'Vou observar o centro da guarda e marcar a abertura para você.' :
             'Na hora em que o sensei olhar para mim, vá pelos fundos.',
       ]);
-      const score = await runMini(new StrikeGame(5, 'Teste dos sinos', 'Avance quando o marcador entrar na faixa.', 'bell', help?.tactic));
+      const score = await runMini(new StrikeGame(5, 'Teste dos sinos', 'Avance quando o marcador entrar na faixa.', 'bell', help?.tactic, supportAffinity(active, ally)));
       const choice = await say(who, ['A distração funcionou. Um dos colegas está cercado, e os sinos estão ao seu alcance.'],
         [{ id: 'ajudar', label: 'Recuar e ajudar a equipe' }, { id: 'sozinho', label: 'Tentar pegar os sinos sozinho' }]);
       if (!resolveBells(active, score, choice === 'ajudar')) {
@@ -687,12 +810,16 @@ async function talkToSensei(who: { name: string; actor: Actor }) {
   placeNpcs();
 }
 
-async function chooseSupport(campaign: Campaign, prompt: string, solo = 'Fazer a aproximação sozinho') {
-  const members = teamMembers(campaign).filter((id) => SUPPORT[id]);
+async function chooseSupport(campaign: Campaign, prompt: string, solo = 'Fazer a aproximação sozinho', bonus?: 'sinos' | 'ronda', excluded = '') {
+  const members = teamMembers(campaign).filter((id) => id !== excluded && SUPPORT[id] && campaign.npcs[id]?.alive);
   if (!members.length) return '';
   const names = { rastreio: 'Ler sinais', bloqueio: 'Fechar passagem', distracao: 'Distrair' };
   const choice = await say(null, [prompt], [
-    ...members.map((id) => ({ id, label: `${CHARACTERS[id].name} · ${names[SUPPORT[id].tactic]}` })),
+    ...members.map((id) => {
+      const affinity = supportAffinity(campaign, id);
+      const extra = !affinity ? '' : bonus === 'sinos' ? ` · Faixa +${affinity * 3} p.p.` : bonus === 'ronda' ? ` · Rival perde ${affinity * 5} RES` : '';
+      return { id, label: `${CHARACTERS[id].name} · ${names[SUPPORT[id].tactic]}${extra}` };
+    }),
     { id: 'sozinho', label: solo },
   ]);
   return members.includes(choice) ? choice : '';
@@ -715,7 +842,10 @@ async function catchTora() {
   const tactic = toraTactic(c);
   const score = await runMini(new ToraGame(tactic ?? 'sozinho'));
   if (score < 1) { await say(null, ['Tora deu um salto e voltou para o esconderijo. Espere a poeira baixar e tente de novo.']); return; }
-  if (rescueTora(c)) await say(null, ['Você conseguiu pegar Tora. Encontre seu sensei na Rua da Academia.']);
+  if (rescueTora(c)) {
+    save();
+    await say(null, ['Você conseguiu pegar Tora. Encontre seu sensei na Rua da Academia.']);
+  }
 }
 
 async function patrolDuel(who: { name: string; actor: Actor }) {
@@ -724,14 +854,14 @@ async function patrolDuel(who: { name: string; actor: Actor }) {
     'Nesta missão, as kunai e os shuriken que você usar saem do estoque.'],
     [{ id: 'pronto', label: 'Começar o duelo da ronda' }, { id: 'depois', label: 'Preparar a equipe' }]);
   if (decision !== 'pronto') return;
-  const ally = await chooseSupport(c, 'Quem vai preparar a entrada no duelo?');
+  const ally = await chooseSupport(c, 'Quem vai preparar a entrada no duelo?', 'Começar sem apoio', 'ronda');
   const tactic = SUPPORT[ally]?.tactic;
   if (ally) await say({ name: CHARACTERS[ally].name, actor: actorFor(ally) }, [
     tactic === 'rastreio' ? 'Vi onde ela está. Você pode começar a longa distância.' :
       tactic === 'bloqueio' ? 'Eu fecho a lateral. Você começa perto dela.' :
         'Deixa comigo. Quando você entrar, ela já vai ter gasto fôlego seguindo a distração.',
   ]);
-  const won = await runBattle('maki', 'Ronda das lanternas', { tactic });
+  const won = await runBattle('maki', 'Ronda das lanternas', { tactic, affinity: supportAffinity(c, ally) });
   if (settlePatrolDuel(c, won === true)) {
     if (ally) bond(c, ally, { confianca: 4 }, 'Preparou comigo a entrada no duelo da ronda.');
     placeNpcs();
@@ -749,7 +879,54 @@ function drawMissionSpot(spot: ReturnType<typeof missionSpots>[number]) {
   if (id === 'tora') drawTora(g, x, y, 1, 1, calm.matches ? 0 : Math.floor(clock * 3) % 2);
   else if (id.startsWith('rastro-')) drawTrack(g, x, y, id);
   else if (id.startsWith('selo-') || id.startsWith('patrulha-')) drawAssignmentProp(g, id, x, y, calm.matches ? 0 : clock);
-  else drawSupply(g, x, y, id);
+  else if (id.startsWith('chunin-rota-')) {
+    px(g, x - 1, y - 17, 3, 17, '#594333');
+    px(g, x - 7, y - 17, 15, 7, '#78563b');
+    px(g, x - 5, y - 16, 10, 3, id.endsWith('norte') ? '#d6bc82' : '#8ec5cb');
+  } else if (id === 'invasao-abrigo' || id === 'invasao-baliza' || id === 'invasao-preparar') {
+    const banner = id === 'invasao-abrigo' ? '#73a490' : id === 'invasao-baliza' ? '#e1c083' : '#b8755f';
+    px(g, x - 1, y - 22, 3, 22, '#594333');
+    px(g, x + 2, y - 21, 11, 9, '#5f4b39');
+    px(g, x + 2, y - 20, 10, 6, banner);
+    px(g, x + 5, y - 17, 4, 1, '#f5deae');
+  } else if (id === AKATSUKI_PASSAGE.id) {
+    px(g, x - 1, y - 17, 3, 16, '#65563f');
+    px(g, x - 3, y - 25, 7, 10, '#4d3e38');
+    px(g, x - 2, y - 23, 5, 6, '#de9754');
+    px(g, x - 1, y - 23, 3, 4, '#ffe4aa');
+  } else if (id === 'resgate-rastro-norte' || id === 'resgate-rastro-sul') {
+    drawTrack(g, x, y, id.endsWith('norte') ? 'rastro-norte' : 'rastro-sul');
+    px(g, x - 11, y - 2, 4, 2, '#d4b9a0');
+    px(g, x + 9, y - 7, 5, 2, '#d4b9a0');
+  } else if (id === 'resgate-fio') {
+    px(g, x - 11, y - 12, 3, 13, '#62553d');
+    px(g, x + 10, y - 12, 3, 13, '#62553d');
+    px(g, x - 8, y - 6, 18, 1, '#ead3a3');
+    px(g, x - 2, y - 7, 4, 5, '#b3604c');
+  } else if (id === 'resgate-norte' || id === 'resgate-sul') {
+    drawAssignmentProp(g, id.endsWith('norte') ? 'patrulha-fita' : 'patrulha-luz', x, y, calm.matches ? 0 : clock);
+  } else if (id === VALE_REST.id) {
+    drawAssignmentProp(g, 'patrulha-luz', x, y, calm.matches ? 0 : clock);
+  } else if (id.startsWith('invasao-grupo-') || Object.hasOwn(SUNA_ACTORS, id) || id.startsWith('akatsuki-') || id === 'classico-akatsuki') {
+    return; // Os personagens da missão são desenhados com os demais atores.
+  } else if (id.startsWith('resgate-') || id === RESCUE_EXIT.id || id.startsWith('vale-') || id === 'classico-vale') {
+    return;
+  } else if (id === 'classico-ceu' || id === 'classico-terra') {
+    drawFieldExamScroll(g, x, y, id === 'classico-ceu' ? 'ceu' : 'terra');
+  } else if (id === 'classico-torre') {
+    drawFieldExamScroll(g, x - 4, y - 6, 'ceu');
+    drawFieldExamScroll(g, x + 4, y, 'terra');
+  } else if (id.startsWith('chunin-reserva-')) {
+    drawFieldExamScroll(g, x, y, 'reserva');
+  } else if (id === ROAD_TRACKS.id || id === ROAD_CAMP.id || id === 'classico-barco'
+      || id === 'ondas-caixote' || id === 'ondas-amarra' || Object.hasOwn(WAVES_ACTORS, id)
+      || id === 'classico-preliminar' || id === 'classico-final') {
+    return; // A arte do mapa e os atores já representam esses pontos.
+  } else if (id.startsWith('ondas-') || id.startsWith('classico-')) {
+    px(g, x - 6, y - 8, 12, 6, '#68462e');
+    px(g, x - 4, y - 7, 8, 4, '#efcc85');
+    px(g, x - 1, y - 8, 2, 6, '#ad653a');
+  } else drawSupply(g, x, y, id);
 }
 
 // ——— Mapas e câmera ———
@@ -761,7 +938,10 @@ let shownMap: MapId | null = null;
 function enterMap(id: MapId, x: number, y: number, dir: Dir, fade = true) {
   const go = () => {
     if (!c) return;
+    if (c.map !== id) dirty = true;
     c.map = id; c.x = x; c.y = y; c.dir = dir;
+    if (id === 'vale') c.flags[VALLEY_MAP_FLAG] = true;
+    escortTrail = [];
     if (id === 'campo' && c.period === 0 && academyMorning(c) === 'free' && retakeDay(c) !== null) startAfternoon(c);
     if (!c.seen.includes(id)) c.seen.push(id);
     const changed = shownMap !== id; shownMap = id;
@@ -792,6 +972,7 @@ function size() {
   const W = innerWidth, H = innerHeight;
   const portraitMode = H > W;
   let s = portraitMode ? Math.max(2, Math.round(W / 210)) : Math.max(1, Math.round(Math.min(W / 440, H / 250)));
+  if (c?.map === 'vale' && !portraitMode) s = Math.min(s, Math.max(1, Math.floor(H / map().h)));
   if (zoomCloser) s += 1;
 
   const lw = Math.ceil(W / s), lh = Math.ceil(H / s);
@@ -834,7 +1015,55 @@ function todayLesson(cc: Campaign) { return LESSONS.find((l) => l.day === cc.day
 function objective(cc: Campaign): string {
   if (cc.quest === 'matricula-ficha') return 'Pegue a ficha no quadro de avisos';
   if (cc.quest === 'matricula-entrega') return 'Entregue a ficha a Iruka';
+  if (valleyReportPending(cc)) return 'Vale do Fim · Entregue o relato a Iruka na Rua da Academia';
   const stage = geninStage(cc);
+  const chapter = classicChapter(cc);
+  if (chapter) {
+    if (cc.map !== chapter.area) return chapter.id === 'invasao'
+      ? 'Invasão · Volte à Rua da Academia para continuar' : `${chapter.title} · Fale com Iruka na Academia para retomar`;
+    const stops = pendingWaveStops(cc, chapter.id);
+    if (stops.length) return chapter.id === 'haku' ? `Investigue o cais · ${2 - stops.length}/2 pistas` : `Evacue a ponte · ${2 - stops.length}/2 grupos em segurança`;
+    const route = forestRoute(cc);
+    if (chapter.id === 'ceu' && route) return `Céu · Cruze pela rota indicada no mapa: ${FOREST_ROUTES[route].label}`;
+    if (chapter.id === 'terra' && cc.flags['chunin-floresta-reserva']) return 'Terra · Procure a equipe do Som e proponha a troca';
+    if (chapter.id === 'gaara') {
+      const pending = pendingSunaGuards(cc).length;
+      if (pending) return `Fronteira · Consulte o posto oeste e a duna sul · ${SUNA_GUARDS.length - pending}/${SUNA_GUARDS.length}`;
+    }
+    if (chapter.id === 'tsunade' && !sunaLeadReady(cc)) return `Tsunade · ${sunaLead(cc).id === 'suna-carta' ? 'Encontre a mensageira da Areia' : 'Passe no posto de socorro'}`;
+    if (chapter.id === 'akatsuki') {
+      const remaining = pendingAkatsukiClues(cc).length;
+      if (remaining) return `Visitantes · Investigue o Ichiraku e a praça · ${AKATSUKI_CLUES.length - remaining}/${AKATSUKI_CLUES.length}`;
+      const next = chapterSpots(cc, chapter)[0];
+      return `Visitantes · ${next.label}`;
+    }
+    if (chapter.id === 'som') {
+      if (cc.flags['resgate-equipe'] && !rescueRoute(cc)) return 'Resgate · Examine a passarela norte ou as pedras do vau';
+      return `Resgate · ${chapterSpots(cc, chapter)[0].label}`;
+    }
+    if (chapter.id === 'vale') return `Vale do Fim · ${chapterSpots(cc, chapter)[0].label}`;
+    if (chapter.id === 'invasao') {
+      const route = invasionRoute(cc);
+      if (!route) return 'Invasão · Encontre a guarda no leste da praça';
+      if (!cc.flags['invasao-passagem-pronta']) return `Invasão · Libere a passagem: ${INVASION_ROUTES[route].label}`;
+      const count = evacuationCount(cc), group = escortGroup(cc);
+      if (count === GROUP_IDS.length) return 'Evacuação concluída · Entregue o relatório à guarda';
+      if (group) {
+        const target = atEvacuationCheckpoint(cc, group) ? INVASION_SHELTER : INVASION_GROUPS[group].checkpoint[route];
+        return `Escolta · ${target.label} · ${count}/${GROUP_IDS.length} grupos em segurança`;
+      }
+      return `Invasão · Encontre os moradores · ${count}/${GROUP_IDS.length} grupos em segurança`;
+    }
+    return chapter.objective;
+  }
+  if (cc.flags['classico-final']) return 'Clássico concluído · Explore e treine em Konoha';
+  if (stage === 'concluida') {
+    const trip = wavesStage(cc);
+    if (cc.map !== 'estrada') return trip === 'pausa' ? 'País das Ondas · Acampamento montado' : 'País das Ondas · Fale com Tazuna quando quiser partir';
+    if (trip === 'estrada') return 'Escolta · Examine as marcas de carroça junto ao riacho';
+    if (trip === 'acampamento') return 'Escolta · Cruze a ponte e monte o acampamento';
+    return 'Escolta · Acampamento montado antes da travessia';
+  }
   if (missionDeferred(cc)) return `Treino livre · Fale com ${CHARACTERS[senseiId(cc)].name} quando quiser aceitar a missão`;
   if (stage === 'busca' && cc.flags['tora-rastro']) return 'Missão D · Aproxime-se de Tora no esconderijo';
   if (stage === 'selo-pistas') {
@@ -963,6 +1192,16 @@ async function talkToGuy(who: { name: string; actor: Actor }) {
   }
 }
 
+async function talkAboutRelationship(campaign: Campaign, id: string, who: { name: string; actor: Actor }) {
+  const topic = conversation(campaign, id);
+  if (!topic) return;
+  const answer = await say(who, [topic.text], [...topic.answers, { id: 'depois', label: 'Deixar para depois' }]);
+  const response = answerConversation(campaign, id, answer);
+  if (!response) return;
+  save();
+  await say(who, [response]);
+}
+
 async function talkTo(n: Npc) {
   if (!c) return;
   n.dir = face(c.x - n.x, c.y - n.y, n.dir);
@@ -979,6 +1218,23 @@ async function talkTo(n: Npc) {
   }
   if (n.id === 'gen') { await shop(who); return; }
   if (n.id === 'tazuna') { await talkToTazuna(who); return; }
+  const chapter = classicChapter(c);
+  if (n.id === 'iruka' && chapter && chapter.area !== 'rua') {
+    const choice = await say(who, [`Sua equipe deixou uma tarefa pendente. ${chapter.objective}.`],
+      [{ id: 'seguir', label: `Seguir para ${maps[chapter.area].name}` }, { id: 'depois', label: 'Ficar em Konoha' }]);
+    if (choice === 'seguir') enterChapter(chapter);
+    return;
+  }
+  if (chapter?.area === c.map && ['ondas', 'floresta', 'arena', 'suna', 'vale'].includes(c.map)) {
+    await say(who, [`O próximo passo é este: ${chapter.objective.toLocaleLowerCase('pt-BR')}.`]);
+    return;
+  }
+  if (c.map === 'estrada') {
+    await say(who, [n.id === senseiId(c)
+      ? 'Mantenham Tazuna no meio. Se a rota mudar, todo mundo precisa saber antes de atravessar.'
+      : 'Vou ficar de olho na ponte. Me avise se vir alguém voltando pela estrada.']);
+    return;
+  }
   const stage = geninStage(c);
   if (stage && n.id === senseiId(c)) { await talkToSensei(who); return; }
   if (n.id === 'maki') { await patrolDuel(who); return; }
@@ -1029,8 +1285,11 @@ async function talkTo(n: Npc) {
     npcState.talkedDay = c.day;
     bond(c, n.id, { amizade: 3 });
   }
+  const topic = conversation(c, n.id);
+  const relationship = topic ? [{ id: 'conversar', label: topic.label }] : [];
   if (n.id === 'naruto' && c.period === 1 && c.map === 'campo' && npcState.bond.amizade >= 20 && 'bunshin' in c.jutsus) {
-    const ch = await say(who, lines, [{ id: 'treinar', label: 'Treinar Bunshin com Naruto (1 ação)' }, { id: 'nao', label: 'Agora não' }]);
+    const ch = await say(who, lines, [{ id: 'treinar', label: 'Treinar Bunshin com Naruto (1 ação)' }, ...relationship, { id: 'nao', label: 'Agora não' }]);
+    if (ch === 'conversar') await talkAboutRelationship(c, n.id, who);
     if (ch === 'treinar' && c.actions > 0) {
       c.flags['treino-naruto'] = ((c.flags['treino-naruto'] as number) ?? 0) + 1;
       c.npcs.naruto.jutsus.bunshin = Math.min(100, (c.npcs.naruto.jutsus.bunshin ?? 0) + 9);
@@ -1047,8 +1306,10 @@ async function talkTo(n: Npc) {
     const ch = await say(who, lines, [
       { id: 'luta', label: 'Desafiar para um treino de luta (1 ação)' },
       ...(classic ? [{ id: 'katon', label: 'Treinar Katon (1 ação)' }] : []),
+      ...relationship,
       { id: 'nao', label: 'Até mais' },
     ]);
+    if (ch === 'conversar') await talkAboutRelationship(c, n.id, who);
     if (ch === 'luta') await spar(n);
     if (ch === 'katon') {
       const ready = Object.entries(JUTSUS.gokakyu.requirements)
@@ -1064,7 +1325,9 @@ async function talkTo(n: Npc) {
     }
     return;
   }
-  await say(who, lines);
+  if (!topic) { await say(who, lines); return; }
+  const choice = await say(who, lines, [...relationship, { id: 'nao', label: 'Até mais' }]);
+  if (choice === 'conversar') await talkAboutRelationship(c, n.id, who);
 }
 
 async function shop(who: { name: string; actor: Actor }) {
@@ -1094,8 +1357,750 @@ async function shop(who: { name: string; actor: Actor }) {
   }
 }
 
+function enterChapter(chapter: Chapter) {
+  const entry = chapter.area === 'sala' ? { x: 240, y: 230 }
+    : chapter.area === 'rua' ? { x: 470, y: 238 }
+    : chapter.area === 'estrada' ? ROAD_ENTRY
+    : chapter.area === 'vale' ? VALLEY_ENTRY
+    : chapter.area === 'floresta' ? FOREST_ENTRY
+    : chapter.area === 'arena' ? ARENA_ENTRY
+    : chapter.area === 'suna' ? SUNA_ENTRY
+    : chapter.area === 'ondas' ? VILLAGE_ENTRY : CLASSIC_ENTRY;
+  const dir = chapter.area === 'arena' ? 'up' : chapter.area === 'ondas' ? 'left' : 'right';
+  enterMap(chapter.area, entry.x, entry.y, dir, false);
+  save();
+}
+
+async function chapterDuel(camp: Campaign, id: string, title: string, support?: { ally: string; extraFatigue: number }) {
+  const ally = support?.ally ?? (camp.map === 'arena' ? '' : await chooseSupport(camp, 'Quem vai dar cobertura enquanto você segura a passagem?', 'Assumir a frente sem apoio', 'ronda', id));
+  const won = await runBattle(id, title, { tactic: SUPPORT[ally]?.tactic, affinity: supportAffinity(camp, ally), extraFatigue: support?.extraFatigue });
+  if (!won) {
+    restoreAll(camp);
+    save();
+    await say(null, ['Seu time cobriu a retirada e fez os primeiros socorros. Você pode tentar de novo ou voltar a Konoha para se preparar.']);
+  }
+  return won === true;
+}
+
+async function playWrittenExam(camp: Campaign): Promise<boolean> {
+  const examiner = { name: 'Banca Chūnin' };
+  if (writtenPassed(camp)) return true;
+  const start = await say(examiner, [
+    `São ${WRITTEN_QUESTIONS} situações de campo. Com ${WRITTEN_PASS} acertos, a equipe avança para a floresta.`,
+    'O resultado sai no fim. Se precisar sair, você pode voltar e começar a mesma prova novamente.',
+  ], [{ id: 'comecar', label: 'Começar a prova' }, { id: 'depois', label: 'Fazer mais tarde' }]);
+  if (start !== 'comecar') return false;
+  const responses: string[] = [];
+  const questions = writtenExam(camp);
+  for (const [index, question] of questions.entries()) {
+    const response = await say({ name: `Banca Chūnin · Questão ${index + 1}/${questions.length}` }, [question.prompt], [
+      ...question.options, { id: 'sair', label: 'Sair da prova' },
+    ]);
+    if (response === 'sair') return false;
+    responses.push(response);
+  }
+  const grade = gradeWrittenExam(camp, responses);
+  if (!grade) return false;
+  const passed = writtenPassed(camp);
+  if (passed) restoreAll(camp);
+  save();
+  refresh();
+  await say(examiner, [
+    `${grade.score}/${questions.length} acertos. ${passed ? 'Sua equipe está aprovada para a Floresta da Morte.' : `A classificação exige ${WRITTEN_PASS} acertos.`}`,
+    ...grade.review,
+    passed ? 'Reponham o fôlego antes de atravessar o portão. Levem o pergaminho do Céu até a torre e consigam também o da Terra.'
+      : 'Você pode refazer a prova quando quiser. A banca usa outra combinação de situações a cada tentativa entregue.',
+  ]);
+  return passed;
+}
+
+async function scoutForestRoute(camp: Campaign, route: ForestRoute) {
+  const north = route === 'norte';
+  const start = await say(null, north ? [
+    'A passarela é firme, mas uma patrulha avista as tábuas entre as árvores. Identifique os pontos fora da linha de visão.',
+    'A trilha ao sul contorna a patrulha e cruza o riacho pelas pedras.',
+  ] : [
+    'As pedras do vau ficam fora do alcance da patrulha, mas a corrente varia. Pratique dosar o chakra antes de pôr a equipe na água.',
+    'Ao norte, a passarela é firme e tem menos lugares para se esconder.',
+  ], [{ id: 'preparar', label: `Preparar a passagem · ${FOREST_ROUTES[route].label}` },
+    { id: 'depois', label: 'Continuar explorando' }]);
+  if (start !== 'preparar') return;
+  const ally = await chooseSupport(camp, north ? 'Quem ajuda a observar a patrulha?' : 'Quem ajuda a testar os apoios no vau?', 'Preparar a passagem sozinho');
+  const tactic = SUPPORT[ally]?.tactic;
+  const affinity = supportAffinity(camp, ally);
+  const helps = tactic === (north ? 'rastreio' : 'bloqueio');
+  if (ally) {
+    await say({ name: CHARACTERS[ally].name, actor: actorFor(ally) }, [
+      helps
+        ? north ? 'Eu acompanho a patrulha. Você terá mais tempo para ver a passagem livre.'
+          : 'Vou firmar o apoio com a corda. Assim você tem mais margem para controlar o chakra.'
+        : 'Fico de vigia na margem e aviso se alguém se aproximar.',
+    ]);
+  }
+  const game = north
+    ? new ObservationGame(false, seededRand(), helps ? 1.6 + affinity * 0.3 : 1.2)
+    : new ChakraGame(camp.stats['Controle de chakra'] + (helps ? 3 + affinity * 2 : 0));
+  game.title = north ? 'Vigia da passarela' : 'Equilíbrio no vau';
+  const score = await runMini(game, true);
+  if (score === null) return;
+  if (!completeForestRoute(camp, route, score)) {
+    await say(null, ['A equipe esperou na margem. Você pode tentar de novo aqui ou seguir até a outra passagem.']);
+    return;
+  }
+  if (ally) bond(camp, ally, { confianca: 2 }, `Preparou comigo a passagem na Floresta da Morte.`);
+  save();
+  refresh();
+  await say(null, [north ? 'Vocês identificaram os pontos cegos. Do outro lado da passarela há um embrulho próximo às raízes.'
+    : 'A equipe encontrou um ritmo firme nas pedras. Na outra margem, a água empurrou um embrulho para a relva.']);
+}
+
+function preliminaryRival(camp: Campaign) {
+  const team = teamMembers(camp);
+  return ['neji', 'kiba', 'shino'].find(id => !team.includes(id))!;
+}
+
+async function playChapter(camp: Campaign, chapter: Chapter) {
+  const alternate = camp.settings.fidelity !== 'fiel';
+  const ask = (name: string, lines: string[], choices: { id: string; label: string }[]) =>
+    say({ name, actor: WAVES_ACTORS[`classico-${chapter.id}`] ?? SUNA_ACTORS[`classico-${chapter.id}`] }, lines, [...choices, { id: 'depois', label: 'Preparar primeiro' }]);
+  const fight = async (name: string, lines: string[], id: string) =>
+    (await ask(name, lines, [{ id: 'lutar', label: 'Entrar em combate' }])) === 'lutar'
+    && await chapterDuel(camp, id, chapter.title);
+  let result = 'feito';
+  let debrief: { speaker: Parameters<typeof say>[0]; lines: string[] } | undefined;
+  switch (chapter.id) {
+    case 'barco':
+      if (await ask('Tazuna', ['Vamos nos abaixar até o barco passar pela faixa de neblina. Do outro lado estão as casas da vila e a ponte que ainda precisamos terminar.'],
+        [{ id: 'ir', label: 'Atravessar com a equipe' }]) !== 'ir') return;
+      restoreAll(camp);
+      break;
+    case 'haku': {
+      const options = [{ id: 'lutar', label: 'Proteger a passagem' }];
+      if (alternate || camp.flags['ondas-postura'] === 'investigar') options.push({ id: 'ouvir', label: 'Mostrar a pista e conversar' });
+      const choice = await ask('Haku', ['Eu vi a carroça sair da estrada. Se vocês esperam que eu entregue quem estava nela, vão ter de me dar um motivo.'], options);
+      if (choice === 'ouvir') {
+        result = 'poupado';
+        debrief = { speaker: { name: 'Haku' }, lines: ['A carroça trouxe homens pagos para parar a obra. Tirem os trabalhadores da parte alta antes que eles cheguem.'] };
+      } else if (choice === 'lutar' && await chapterDuel(camp, 'haku', chapter.title)) {
+        result = 'combate';
+        restoreAll(camp);
+        debrief = { speaker: null, lines: ['Sua equipe faz uma pausa na margem e cuida dos ferimentos antes de seguir para a ponte.'] };
+      }
+      else return;
+      break;
+    }
+    case 'zabuza':
+      if (!await fight('Zabuza', [camp.flags['classico-haku'] === 'poupado'
+        ? 'Haku me contou que vocês tiraram os trabalhadores da parte alta. Tazuna tem amigos atentos.'
+        : 'Tazuna fica para trás. Se quiserem levar os trabalhadores até a margem, vão precisar passar por mim.',
+        'A neblina cobre o tablado. Sua equipe abre espaço para a retirada enquanto você patrulha a frente.'], 'zabuza')) return;
+      debrief = { speaker: { name: 'Tazuna', actor: TAZUNA }, lines: [
+        'Quando vocês chegaram, eu só pensava em terminar a ponte. Hoje, quando vi o tablado vazio, pensei em quem voltaria para casa.',
+        'Os trabalhadores querem terminar a obra juntos. Prometi mandar uma carta à Academia quando a primeira carroça passar.',
+      ] };
+      break;
+    case 'inscricao': {
+      const names = teamMembers(camp).map(id => CHARACTERS[id].name).join(' e ');
+      if (await ask('Iruka', [`Tazuna escreveu. A primeira carroça cruzou a ponte levando arroz. Ele pediu que eu contasse isso a ${names || 'sua equipe'} e a você.`,
+        'Na ponte, vocês tiveram que decidir quando parar e quem proteger. A inscrição de vocês para o Exame Chūnin está pronta.',
+        'A prova escrita avalia decisões de liderança. Depois vocês entram na floresta com um pergaminho do Céu e precisam conseguir o da Terra para entregar os dois na torre.'],
+        [{ id: 'ir', label: 'Inscrever a equipe' }]) !== 'ir') return;
+      break;
+    }
+    case 'escrita':
+      if (!await playWrittenExam(camp)) return;
+      break;
+    case 'ceu':
+      if (await ask('Sua equipe', [forestRoute(camp) === 'norte'
+        ? 'O embrulho preso nas raízes tem o selo do Céu. O cordão é da nossa bolsa, que caiu quando a patrulha passou.'
+        : 'O que a corrente levou até a margem é a nossa bolsa. O selo do Céu está intacto. A equipe do Som acampou mais adiante.'],
+        [{ id: 'ir', label: 'Guardar o pergaminho do Céu' }]) !== 'ir') return;
+      break;
+    case 'terra': {
+      const options = [{ id: 'lutar', label: 'Disputar o pergaminho em duelo' }];
+      if (camp.flags['chunin-floresta-reserva']) options.unshift({ id: 'trocar', label: 'Oferecer o pergaminho do Céu avulso' });
+      const choice = await ask('Batedor do Som', ['Temos duas cópias do pergaminho da Terra. Nossa equipe precisa de um do Céu para chegar à torre. O que vocês têm para oferecer?'], options);
+      if (choice === 'trocar') {
+        result = 'troca';
+        await say({ name: 'Batedor do Som' }, ['Vamos pôr os pergaminhos nas duas raízes. Confiram o selo da Terra. Depois recolhemos os dois ao mesmo tempo.']);
+      } else if (choice !== 'lutar' || !await chapterDuel(camp, 'floresta', chapter.title)) return;
+      break;
+    }
+    case 'torre': {
+      const choice = await ask('Sasuke', ['O inimigo que se apresentou como Orochimaru desapareceu na mata. Uma marca em meu pescoço começou a queimar. Os dois pergaminhos ainda estão com vocês.'],
+        [{ id: 'ajudar', label: 'Levar Sasuke à torre com a equipe' }, { id: 'perseguir', label: 'Seguir a pista enquanto outro colega o acompanha' }]);
+      if (choice === 'depois') return;
+      result = choice;
+      if (choice === 'ajudar') bond(camp, 'sasuke', { confianca: 8 }, 'Ajudou a chegar à torre após a marca de Orochimaru.');
+      break;
+    }
+    case 'preliminar': {
+      const rival = preliminaryRival(camp);
+      if (!await fight('Banca Chūnin', [`Sua equipe entregou os dois pergaminhos. A eliminatória põe você contra ${CHARACTERS[rival].name}.`,
+        'É um duelo individual. Observe a distância e pare quando houver rendição.'], rival)) return;
+      restoreAll(camp);
+      debrief = { speaker: null, lines: ['O posto médico da arena repõe seu fôlego antes da final. Você pode enfrentar a próxima prova agora ou voltar à vila para se preparar.'] };
+      break;
+    }
+    case 'final': {
+      const choice = await ask('Banca Chūnin', ['A final avalia o combate e sua capacidade de tomar decisões sob pressão. O que você faria se o público precisasse sair no meio do duelo?'],
+        [{ id: 'lideranca', label: 'Parar o duelo e organizar a evacuação' }, { id: 'genin', label: 'Concluir o duelo para evitar confusão' }]);
+      if (choice === 'depois' || !await chapterDuel(camp, 'gaara', chapter.title)) return;
+      result = choice;
+      break;
+    }
+    case 'invasao': {
+      const route = invasionRoute(camp);
+      if (!camp.flags['invasao-passagem-pronta']) {
+        const choice = await ask('Guarda da Folha', route
+          ? ['Os dois grupos ainda aguardam. Podemos mudar o caminho até a passagem estar pronta.']
+          : ['O Som rompeu a linha da guarda durante a final. Há dois grupos esperando socorro, um no mercado e outro na Academia.',
+            'Leve um grupo por vez até o posto de socorro ao sul da praça. A equipe médica repõe seu fôlego antes de vocês saírem.'],
+        [{ id: 'evacuar', label: 'Verificar os becos laterais' }, { id: 'defender', label: 'Liberar o corredor central em combate' }]);
+        if ((choice !== 'evacuar' && choice !== 'defender') || !chooseInvasionRoute(camp, choice)) return;
+        if (!route) restoreAll(camp);
+        save();
+        refresh();
+        await say({ name: 'Guarda da Folha' }, [choice === 'evacuar'
+          ? 'A travessa fica ao sul do muro leste. Procure o vigia perto da cerca. Prepare a passagem antes de chamar os moradores.'
+          : 'O invasor parou na saída leste da praça. Afaste-o dali. Assim os moradores podem seguir pelo centro.']);
+        return;
+      }
+      if (!route || !invasionReady(camp, route)) return;
+      if (await ask('Guarda da Folha', [route === 'evacuar'
+        ? 'Os dois grupos chegaram pelas travessas. Já mandei fechar a cerca atrás deles.'
+        : 'O corredor está de novo nas mãos da Folha. Os dois grupos foram contados no posto.',
+        'Um mensageiro viu Gaara seguir para a fronteira. Se quiserem acompanhá-lo, posso indicar o caminho quando estiverem prontos.'],
+      [{ id: 'relatar', label: 'Entregar o relatório da evacuação' }]) !== 'relatar') return;
+      result = route;
+      break;
+    }
+    case 'gaara': {
+      const options = [{ id: 'lutar', label: 'Impedir o avanço de Gaara' }];
+      if (alternate) options.push({ id: 'recuar', label: 'Abrir espaço e negociar a retirada' });
+      const choice = await ask('Gaara', ['Na arena todo mundo queria que eu continuasse lutando. Aqui minha equipe ficou para trás. Por que você veio até a passagem de serviço?'], options);
+      if (choice === 'recuar') {
+        result = 'acordo';
+        debrief = { speaker: { name: 'Gaara', actor: SUNA_ACTORS['classico-gaara'] }, lines: [
+          'Deixem a saída livre. Eu vou buscar minha equipe e mandar uma mensageira até vocês. Ela sabe onde a médica da Folha está parando.',
+        ] };
+      }
+      else if (choice !== 'lutar' || !await chapterDuel(camp, 'gaara', chapter.title)) return;
+      else debrief = { speaker: { name: 'Guarda da Areia', actor: SUNA_ACTORS['suna-guarda'] }, lines: [
+        'A equipe dele já chegou ao portão. A passagem está livre. Vão ao posto de socorro. A enfermeira mandou avisar que tem um recado de Konoha para vocês.',
+      ] };
+      break;
+    }
+    case 'tsunade': {
+      const accord = sunaLead(camp).id === 'suna-carta';
+      const choice = await ask('Tsunade', [accord
+        ? 'A carta da Areia diz que os dois postos vão manter a passagem aberta para os feridos de Konoha. Foi isso que vocês acertaram no portão?'
+        : 'Este registro tem feridos da Folha e da Areia na mesma página. O posto só tem material para mais uma noite. O que está acontecendo em Konoha?'],
+        [{ id: 'aliados', label: accord ? 'Contar como a equipe abriu a passagem' : 'Contar como a equipe levou os moradores ao abrigo' },
+          { id: 'relatorio', label: 'Entregar o relatório da invasão' }]);
+      if (choice === 'depois') return;
+      result = choice;
+      debrief = { speaker: { name: 'Tsunade', actor: SUNA_ACTORS['classico-tsunade'] }, lines: [
+        accord ? 'Vou pedir que a guarda da Folha mantenha o corredor aberto do outro lado. Quero que os curandeiros possam atravessar nos dois sentidos.'
+          : 'Este registro vai comigo. Quando eu chegar, o hospital da Folha vai enviar material e receber os pacientes que o posto encaminhar.',
+        'Vou voltar a Konoha. Antes, levem este aviso. Dois homens com mantos escuros perguntaram pelo garoto do lámen.',
+      ] };
+      break;
+    }
+    case 'akatsuki': {
+      const route = akatsukiRoute(camp);
+      if (!route) return;
+      const guard = { name: 'Guarda da Folha', actor: actorFor('maki') };
+      const choice = await say(guard, [route === 'becos'
+        ? 'Naruto já está com a ronda. Podemos tirar o pessoal do Ichiraku dali antes que os dois voltem. Diga por onde você os viu passar.'
+        : 'Naruto está seguro. A ronda viu Kisame abandonar a praça. Preciso que você descreva o confronto para quem vai assumir o próximo turno.'],
+      [{ id: 'relatar', label: 'Entregar o relatório' }, { id: 'depois', label: 'Entregar mais tarde' }]);
+      if (choice !== 'relatar') return;
+      result = route;
+      debrief = { speaker: guard, lines: [route === 'becos'
+        ? 'Anotado. Vamos reforçar a ronda do Ichiraku e manter a abertura da cerca livre.'
+        : 'Anotado. Vou destacar outra equipe para a praça. Se ele voltar, quem estiver de guarda já vai conhecer a finta das cópias.'] };
+      break;
+    }
+    case 'som': {
+      const route = rescueRoute(camp);
+      if (!route) return;
+      const sensei = senseiId(camp);
+      const who = { name: CHARACTERS[sensei].name, actor: actorFor(sensei) };
+      const choice = await say(who, [
+        route === 'norte' ? 'Vi o rastro que vocês seguiram pela passarela. Daqui para a frente só ficaram as pegadas do Sasuke.'
+          : 'As pegadas que vocês seguiram no vau voltam para o rio. As do Sasuke continuam sozinhas para a cachoeira.',
+        'Ainda dá para alcançar a margem. Eu aviso a retaguarda. Você decide quando seguir.',
+      ], [{ id: 'seguir', label: 'Confirmar a trilha para o Vale do Fim' }, { id: 'depois', label: 'Descansar primeiro' }]);
+      if (choice !== 'seguir') return;
+      result = route;
+      break;
+    }
+    case 'vale': {
+      const ending = await confrontSasuke(camp, chapter.title);
+      if (!ending) return;
+      result = ending;
+      break;
+    }
+  }
+  if (!resolveChapter(camp, chapter.id, result)) return;
+  placeNpcs();
+  save();
+  if (debrief) await say(debrief.speaker, debrief.lines);
+  if (chapter.id === 'final') await say({ name: 'Banca Chūnin' }, [
+    result === 'lideranca' ? 'Você venceu e deu uma ordem segura para a retirada do público. A banca aprovou sua promoção a Chūnin.'
+      : 'Você venceu o duelo. Sua instrução deixaria o público exposto, então a banca decidiu manter sua patente Genin.',
+    'Há um alarme nos portões da Academia. Sua equipe está aguardando na rua.',
+  ]);
+  const next = classicChapter(camp);
+  if (!next) {
+    enterMap('rua', 470, 238, 'down', false);
+    save();
+    await say(null, ['A equipe chegou de volta à Academia. Iruka espera na praça para ouvir o que aconteceu no Vale.']);
+  } else if (next.area !== chapter.area) {
+    const choice = await say(null, [`Próximo capítulo: ${next.title}.`],
+      [{ id: 'seguir', label: 'Continuar com a equipe' }, { id: 'depois', label: 'Voltar a Konoha e continuar depois' }]);
+    if (choice === 'seguir') enterChapter(next);
+    else enterMap('rua', 470, 238, 'down', false);
+  } else refresh();
+  save();
+}
+
+function valleyWitness(camp: Campaign) {
+  return rescueGuide(camp) || teamMembers(camp).find(id => id !== 'sasuke' && camp.npcs[id]?.alive) || senseiId(camp);
+}
+
+async function visitValley(camp: Campaign, id: string) {
+  const later = { id: 'depois', label: 'Voltar depois' };
+  const witness = valleyWitness(camp);
+  const who = { name: CHARACTERS[witness].name, actor: actorFor(witness) };
+  if (id === VALE_LOOKOUT.id) {
+    const approach = camp.flags['classico-som'] === 'norte'
+      ? 'Do alto da passarela já dava para ouvir a água. Agora dá para ver o Sasuke do outro lado.'
+      : camp.flags['classico-som'] === 'sul'
+        ? 'As últimas pegadas vieram das pedras do vau e terminam na laje à frente. Ele está do outro lado.'
+        : 'É o Sasuke, na laje do outro lado. A água cobre a margem lá embaixo. A travessia é pela pedra mais alta.';
+    const choice = await say(who, [approach,
+      'Vamos marcar este ponto para a volta. Se precisar recuperar o fôlego, há um abrigo perto da margem, antes da travessia.'],
+    [{ id: 'olhar', label: 'Marcar o ponto de encontro' }, later]);
+    if (choice !== 'olhar' || !visitValleyLookout(camp)) return;
+  } else {
+    const choice = await say(null, ['As pedras protegem este trecho da névoa. A equipe tem água e curativos para recuperar o fôlego antes de cruzar.'],
+      [{ id: 'descansar', label: 'Recuperar vida, chakra e resistência' }, later]);
+    if (choice !== 'descansar' || !restAtValley(camp)) return;
+  }
+  save();
+  refresh();
+}
+
+async function confrontSasuke(camp: Campaign, title: string) {
+  const who = { name: 'Sasuke', actor: actorFor('sasuke') };
+  const later = { id: 'depois', label: 'Dar um tempo' };
+  if (!camp.flags['vale-duelo']) {
+    const options = [{ id: 'lutar', label: 'Enfrentar Sasuke' }, { id: 'partiu', label: 'Deixar Sasuke partir' }];
+    if (canReconcile(camp)) options.unshift({ id: 'conversar', label: 'Pedir que escute você' });
+    const choice = await say(who, [
+      'Daqui já dá para ver onde a trilha sai da Folha. O grupo do Som disse que lá eu ia aprender a controlar a marca.',
+      'Eu queria saber se consigo escolher isso por mim mesmo. O que você veio dizer?',
+    ], [...options, later]);
+    if (choice === 'conversar') {
+      const response = await say(who, [
+        camp.flags['classico-marca'] === 'ajudar'
+          ? 'Na torre, você ficou por perto quando a marca queimou. Eu achei que ia precisar esconder aquilo de todo mundo.'
+          : 'Faz tempo que você fala comigo sem decidir o que eu deveria sentir. Eu consigo ouvir o que tem pra dizer.',
+        'Se eu voltar, quero falar na Academia antes que a guarda conte essa história por mim.',
+      ], [{ id: 'voltar', label: 'Voltar juntos e ouvir Sasuke na Academia' }, later]);
+      if (response === 'voltar') return 'conversou';
+      return;
+    }
+    if (choice === 'partiu') {
+      const response = await say(who, ['Vou seguir pela trilha. Diga na Academia que foi uma decisão minha.'],
+        [{ id: 'confirmar', label: 'Voltar à Academia com a equipe' }, later]);
+      if (response === 'confirmar') return 'partiu';
+      return;
+    }
+    if (choice !== 'lutar' || !await chapterDuel(camp, 'sasuke', title) || !recordValleyDuel(camp)) return;
+    save();
+    refresh();
+  }
+
+  const faithful = camp.settings.fidelity === 'fiel';
+  const answer = await say(who, [faithful
+    ? 'Eu ouvi você. Mesmo depois da luta, preciso descobrir o que vou fazer longe daqui. Deixe que eu atravesse.'
+    : 'Já chega. Eu vou voltar com vocês. Na Academia eu conto por que segui o grupo do Som e o que a marca está fazendo comigo.'],
+  [{ id: 'confirmar', label: 'Voltar à Academia com a equipe' }, later]);
+  if (answer === 'confirmar') return faithful ? 'partiu' : 'resgate';
+}
+
+async function reportValley(camp: Campaign) {
+  const result = valleyEnding(camp);
+  if (!result) return;
+  const iruka = { name: 'Iruka', actor: actorFor('iruka') };
+  const opening = result === 'conversou' ? 'Sasuke voltou ao seu lado. Quero ouvir o que vocês acertaram na margem.'
+    : result === 'resgate' ? 'Sasuke chegou machucado, mas veio com vocês. Conte o que ele disse depois do duelo.'
+      : camp.flags['vale-duelo'] ? 'A equipe voltou junta. Preciso saber o que Sasuke decidiu depois do duelo.'
+        : 'A guarda disse que Sasuke seguiu para fora da Folha. Conte onde vocês falaram com ele pela última vez.';
+  const answer = await say(iruka, [opening],
+    [{ id: 'relatar', label: 'Entregar o relato do Vale' }, { id: 'depois', label: 'Entregar mais tarde' }]);
+  if (answer !== 'relatar' || !turnInValleyReport(camp)) return;
+  save();
+  placeNpcs();
+  refresh();
+  const response = result === 'conversou' ? 'Vou abrir a sala. Sasuke pode contar com as próprias palavras o que aconteceu com a marca.'
+    : result === 'resgate' ? 'O hospital vai ajudar com os ferimentos. Depois eu quero que Sasuke participe da conversa sobre a marca.'
+      : 'Vou registrar a direção que ele tomou. A guarda assume a busca daqui em diante.';
+  await say(iruka, [response, 'O relato ficou no Diário. A missão da equipe está concluída.']);
+  if (result !== 'partiu') await say({ name: 'Sasuke', actor: actorFor('sasuke') }, [
+    result === 'conversou' ? 'Lá na margem, eu achei que falar seria mais difícil do que ir embora. Obrigado por ter esperado.'
+      : 'Quando a luta acabou, ainda dava para eu virar as costas. Voltar foi a primeira decisão que eu tomei sem ouvir a voz deles.',
+    'A marca ainda está aqui. Amanhã eu volto a treinar, mas hoje vou contar tudo ao Iruka.',
+  ]);
+}
+
+async function visitSuna(camp: Campaign, id: string) {
+  const later = { id: 'depois', label: 'Voltar depois' };
+  if (id === 'suna-guarda') {
+    const who = { name: 'Guarda do posto oeste', actor: SUNA_ACTORS[id] };
+    const report = camp.flags['classico-invasao'];
+    const opening = report === 'evacuar'
+      ? 'Seu relatório fala de moradores retirados pelos becos. Aqui também estamos usando as passagens laterais para levar os feridos.'
+      : report === 'defender'
+        ? 'O relatório diz que vocês reabriram a praça. Aqui eu preciso da mesma coisa no caminho que leva ao posto de socorro.'
+        : 'A poeira trouxe gente machucada dos dois lados. Estamos reservando a rua principal para as macas.';
+    if (await say(who, [opening], [
+      { id: 'passagem', label: 'Combinar por onde minha equipe pode passar' }, later,
+    ]) !== 'passagem' || !recordSunaGuard(camp, id)) return;
+    save();
+    refresh();
+    await say(who, ['Podem cruzar. Contornem as casas e deixem a rua livre para as macas. A vigia da duna sabe onde Gaara parou.']);
+    return;
+  }
+  if (id === 'suna-vigia') {
+    const who = { name: 'Vigia da duna sul', actor: SUNA_ACTORS[id] };
+    const choice = await say(who, ['Lá embaixo, duas trilhas saem do portão. Uma ficou coberta por areia nova. A outra tem pegadas voltando da encosta.'], [
+      { id: 'areia', label: 'Examinar a areia que cobriu o caminho' },
+      { id: 'pegadas', label: 'Ver para onde voltam as pegadas' }, later,
+    ]);
+    if (choice === 'depois' || !recordSunaGuard(camp, id)) return;
+    save();
+    refresh();
+    await say(who, [choice === 'areia'
+      ? 'A areia veio da passagem de serviço. Ele continua lá. Quando ela se fecha ao redor dele, segurem a linha. Ataquem quando ele baixar a guarda.'
+      : 'São da equipe dele. Voltaram pela passagem de serviço para buscá-lo. Gaara espera ali. Se houver luta, protejam-se da investida e esperem a areia baixar.']);
+    return;
+  }
+  const letter = id === 'suna-carta';
+  const who = { name: letter ? 'Mensageira da Areia' : 'Enfermeira da fronteira', actor: SUNA_ACTORS[id] };
+  const meet = await say(who, [letter
+    ? 'Gaara pediu que eu entregasse isto. A carta dá passagem aos curandeiros da Folha. Tsunade está na casa de chá. Mostrem a ela o selo azul.'
+    : 'A retirada trouxe feridos dos dois lados. Posso cuidar da sua equipe. Depois levem este registro à casa de chá. Tsunade passou por aqui e pediu para ver os nomes.'],
+    [{ id: 'pista', label: letter ? 'Receber a carta selada' : 'Aceitar tratamento e levar o registro' }, later]);
+  if (meet !== 'pista' || !recordSunaLead(camp, id)) return;
+  save();
+  refresh();
+}
+
+async function investigateRescue(camp: Campaign, id: string) {
+  const later = { id: 'depois', label: 'Voltar depois' };
+  const sensei = senseiId(camp);
+  const guide = rescueGuide(camp);
+  const teammate = guide ? { name: CHARACTERS[guide].name, actor: actorFor(guide) } : null;
+  if (id === RESCUE_BRIEFING.id) {
+    const choice = await say({ name: CHARACTERS[sensei].name, actor: actorFor(sensei) }, [
+      'O Quarteto saiu com Sasuke. A trilha se divide no riacho: a passarela ao norte e as pedras do vau ao sul. Procurem sinais na outra margem.',
+      'Quem for com você pode ler as pistas e dar cobertura. Eu fico na retaguarda e encontro vocês na saída da floresta.',
+    ], [{ id: 'formar', label: 'Organizar a busca' }, later]);
+    if (choice !== 'formar') return;
+    const ally = await chooseSupport(camp, 'Quem vai acompanhar você pela trilha e dar cobertura se houver combate?', 'Ir na frente sem apoio', 'ronda', 'sasuke');
+    if (!formRescueTeam(camp, ally)) return;
+    escortTrail = [];
+    placeNpcs();
+    save();
+    refresh();
+    return;
+  }
+
+  const fork = id === RESCUE_PATHS.norte.fork.id ? 'norte' : id === RESCUE_PATHS.sul.fork.id ? 'sul' : undefined;
+  if (fork) {
+    const choice = await say(teammate, [fork === 'norte'
+      ? 'Tem barro fresco nos primeiros degraus da passarela. Alguém pesou na madeira e continuou para leste. Vamos conferir a margem do outro lado?'
+      : 'Uma das pedras do vau saiu do lugar. Ainda tem água escorrendo para a trilha de terra do outro lado. Podemos seguir por ali.'],
+    [{ id: 'cruzar', label: fork === 'norte' ? 'Cruzar pela passarela' : 'Cruzar pelas pedras do vau' }, later]);
+    if (choice !== 'cruzar' || !chooseRescueRoute(camp, fork)) return;
+    save();
+    refresh();
+    return;
+  }
+
+  const route = rescueRoute(camp);
+  if (!route) return;
+  if (id === RESCUE_PATHS[route].trail.id) {
+    const choice = await say(teammate, [route === 'norte'
+      ? 'Duas marcas pesadas seguiram pela trilha larga. Na bifurcação, uma delas parou junto a um fio preso às raízes. A sentinela deve estar adiante.'
+      : 'As pegadas saem da água e viram na direção da clareira. Tem alguém da Folha abaixado na margem. Podemos falar com ela antes de avançar.'],
+    [{ id: 'anotar', label: 'Confirmar a trilha do Som' }, later]);
+    if (choice !== 'anotar' || !confirmRescueTrail(camp, route)) return;
+    save();
+    refresh();
+    return;
+  }
+
+  if (id === RESCUE_PATHS[route].aid.id) {
+    const north = route === 'norte';
+    const who = north ? teammate : { name: 'Maki', actor: actorFor('maki') };
+    const choice = await say(who, [north
+      ? 'O fio tem um selo do Som. Dá para selar um eco ilusório aqui. Quando a sentinela ouvir, vai gastar fôlego verificando a outra entrada.'
+      : 'Fiquei presa do lado de fora enquanto ele vigiava a trilha. Me ajude a alcançar as raízes e eu tiro a atenção dele da clareira.'],
+    [{ id: 'preparar', label: north ? 'Deixar um selo ilusório' : 'Ajudar Maki a alcançar a cobertura' }, later]);
+    if (choice !== 'preparar' || !prepareRescueApproach(camp, id)) return;
+    save();
+    refresh();
+    await say(who, ['Funcionou. A sentinela gastou parte da resistência longe da clareira. É uma boa hora para chegar perto.']);
+    return;
+  }
+
+  if (id === 'resgate-sentinela') {
+    const who = { name: 'Sentinela do Quarteto', actor: RESCUE_SENTINEL_ACTOR };
+    const choice = await say(who, [camp.flags['resgate-preparo']
+      ? 'Enquanto eu conferia a outra entrada, vocês cruzaram o riacho. Ainda dá tempo de segurar vocês aqui.'
+      : 'Sasuke já deixou a floresta. Enquanto eu estiver de pé, vocês ficam deste lado da clareira.'],
+    [{ id: 'lutar', label: 'Abrir caminho para o Vale' }, later]);
+    if (choice !== 'lutar' || !await chapterDuel(camp, 'som', 'Bloqueio do Quarteto', { ally: guide, extraFatigue: camp.flags['resgate-preparo'] ? 8 : 0 })
+      || !clearRescueSentinel(camp)) return;
+    save();
+    refresh();
+    await say(teammate, ['A trilha está livre. O ponto de encontro com a retaguarda fica no extremo leste.']);
+  }
+}
+
+async function investigateAkatsuki(camp: Campaign, id: string) {
+  const later = { id: 'depois', label: 'Voltar depois' };
+  const naruto = { name: 'Naruto', actor: actorFor('naruto') };
+  if (id === 'akatsuki-ichiraku' || id === 'akatsuki-maki') {
+    const atRamen = id === 'akatsuki-ichiraku';
+    const who = atRamen ? { name: 'Atendente do Ichiraku', actor: ICHIRAKU_WITNESS } : { name: 'Maki', actor: actorFor('maki') };
+    const choice = await say(who, [atRamen
+      ? 'Deixaram o lámen esfriar no balcão. Os dois queriam saber quando o Naruto vinha comer. Quando eu desconversei, perguntaram onde ficava a Academia.'
+      : 'O sujeito com a espada fica entre a praça e o muro. A cerca ao sul tem uma abertura. Quando a ronda cobrir a esquina, a lanterna vai baixar. É o nosso sinal para atravessar.'],
+    [{ id: 'anotar', label: atRamen ? 'Anotar o que perguntaram' : 'Combinar o sinal da lanterna' }, later]);
+    if (choice !== 'anotar' || !recordAkatsukiClue(camp, id)) return;
+  } else if (id === AKATSUKI_BRIEFING.id) {
+    const sensei = senseiId(camp);
+    const choice = await say({ name: CHARACTERS[sensei].name, actor: actorFor(sensei) }, [
+      'Naruto está esperando atrás das bancas. Podemos buscá-lo e passar pela cerca quando a ronda der o sinal. O posto ao sul já tem gente esperando.',
+      'Se preferir passar pela praça, precisamos conter Kisame primeiro. Depois, você e Naruto cruzam pelo caminho que o time abriu.',
+    ], [
+      { id: 'becos', label: 'Levar Naruto pelos becos' },
+      { id: 'cobertura', label: 'Abrir a praça em combate' }, later,
+    ]);
+    if ((choice !== 'becos' && choice !== 'cobertura') || !chooseAkatsukiRoute(camp, choice)) return;
+  } else if (id === 'akatsuki-kisame') {
+    const choice = await say({ name: 'Kisame', actor: KISAME_ACTOR }, [
+      'Mandaram você ficar de guarda enquanto os outros somem da praça? Vamos ver quanto tempo consegue me segurar.',
+    ], [{ id: 'lutar', label: 'Conter Kisame para liberar a praça' }, later]);
+    if (choice !== 'lutar' || !await chapterDuel(camp, 'akatsuki', 'Cobertura na praça') || !openAkatsukiPassage(camp, 'cobertura')) return;
+    save();
+    refresh();
+    await say({ name: 'Kisame', actor: KISAME_ACTOR }, ['Meu parceiro já foi embora. Não vou perder mais tempo aqui.']);
+    return;
+  } else if (id === NARUTO_PICKUP.id) {
+    const choice = await say(naruto, [akatsukiRoute(camp) === 'becos'
+      ? 'Eles estavam perguntando de mim? Tá. Eu vou junto. Na cerca a gente espera o sinal da ronda, certo?'
+      : 'Então era você segurando aquele cara? Vamos antes que ele volte. Eu acompanho você até a guarda.'],
+    [{ id: 'escoltar', label: 'Sair com Naruto' }, later]);
+    if (choice !== 'escoltar' || !startNarutoEscort(camp)) return;
+    escortTrail = [];
+  } else if (id === AKATSUKI_PASSAGE.id) {
+    const choice = await say(naruto, ['Olha. A lanterna acabou de subir. Qual era o sinal mesmo?'], [
+      { id: 'agora', label: 'Atravessar enquanto a lanterna está no alto' },
+      { id: 'esperar', label: 'Esperar a ronda baixar a lanterna' }, later,
+    ]);
+    if (choice === 'agora') {
+      await say(naruto, ['A ronda ainda está olhando para a rua. Vamos ficar aqui até o sinal da Maki.']);
+      return;
+    }
+    if (choice !== 'esperar' || !openAkatsukiPassage(camp, 'becos')) return;
+    save();
+    refresh();
+    await say(naruto, ['Baixou. É agora. O posto de guarda fica adiante, do outro lado do beco.']);
+    return;
+  } else {
+    if (!finishNarutoEscort(camp, id)) return;
+    escortTrail = [];
+    save();
+    refresh();
+    await say(naruto, ['Chegamos. Eu espero aqui com a guarda. Se perguntarem o que aconteceu, você conta como foi.']);
+    return;
+  }
+  save();
+  refresh();
+}
+
+
+async function investigateWaves(camp: Campaign, id: string) {
+  let note: string;
+  let stage: 'haku' | 'zabuza';
+  let speaker: Parameters<typeof say>[0] = null;
+  if (id === 'ondas-caixote' || id === 'ondas-amarra') {
+    stage = 'haku';
+    note = id === 'ondas-caixote' ? 'No caixote, um recibo liga a carga da carroça aos homens que querem interromper a obra.'
+      : 'Uma amarra cortada e marcas recentes mostram por onde alguém desembarcou sem usar o cais principal.';
+  } else {
+    stage = 'zabuza';
+    const who = { name: id === 'ondas-guincho' ? 'Encarregada do guincho' : 'Trabalhador da ponte', actor: WAVES_ACTORS[id] };
+    speaker = who;
+    if (id === 'ondas-guincho') {
+      const choice = await say(who, ['O guincho está preso. A gente pode abandonar as ferramentas, mas quem está lá no tablado precisa ouvir o aviso.'],
+        [{ id: 'corda', label: 'Usar a corda do guincho como sinal para a retirada' }, { id: 'depois', label: 'Verificar a ponte primeiro' }]);
+      if (choice !== 'corda') return;
+      note = 'O grupo do guincho puxou a corda três vezes e saiu pelo acesso de serviço.';
+    } else {
+      const choice = await say(who, ['A neblina cobre a passagem. Por alguns instantes ainda dá para enxergar onde o caminho está livre. Você consegue guiar a gente?'],
+        [{ id: 'guiar', label: 'Identificar a passagem segura' }, { id: 'depois', label: 'Voltar depois' }]);
+      if (choice !== 'guiar') return;
+      const scout = teamMembers(camp).find(ally => SUPPORT[ally]?.tactic === 'rastreio' && supportAffinity(camp, ally) > 0);
+      if (scout) await say({ name: CHARACTERS[scout].name, actor: actorFor(scout) }, ['Vou marcar a abertura assim que enxergar. Isso vai dar um pouco mais de tempo para você ver a passagem.']);
+      const game = new ObservationGame(false, seededRand(), scout ? 1.8 : 1.2);
+      game.title = 'Evacuação do tablado';
+      const score = await runMini(game, true);
+      if (score === null) return;
+      if (score < 0.5) { await say(who, ['A neblina fechou a passagem. Vamos esperar uma abertura e tentar de novo.']); return; }
+      note = 'A equipe encontrou o corredor livre na neblina e levou o grupo do tablado para terra firme.';
+    }
+  }
+  if (recordWaveStop(camp, stage, id, note)) {
+    save();
+    refresh();
+    await say(speaker, [note]);
+  }
+}
+
+async function evacuateInvasion(camp: Campaign, id: string) {
+  const route = invasionRoute(camp);
+  if (!route) return;
+  if (id === 'invasao-preparar') {
+    if (route === 'evacuar') {
+      const who = { name: 'Vigia da travessa' };
+      const signal = await say(who, ['A cerca cedeu perto do muro. A abertura com uma fita verde dá no beco que seguimos até o posto.',
+        'A lanterna quebrada fica do lado exposto da rua. Marque a passagem que os moradores devem usar.'], [
+        { id: 'fita', label: 'Marcar a abertura com fita verde' },
+        { id: 'lanterna', label: 'Marcar a saída da lanterna quebrada' },
+        { id: 'depois', label: 'Voltar mais tarde' },
+      ]);
+      if (signal !== 'fita') {
+        if (signal === 'lanterna') await say(who, ['Ali a rua fica exposta. Ninguém saiu ainda. Procure a abertura marcada com fita e tente de novo.']);
+        return;
+      }
+    } else {
+      const choice = await say({ name: 'Invasor do Som' }, ['Ninguém passa pela praça enquanto eu estiver aqui.'], [
+        { id: 'lutar', label: 'Enfrentar o invasor' }, { id: 'depois', label: 'Recuar e rever a rota com a guarda' },
+      ]);
+      if (choice !== 'lutar' || !await chapterDuel(camp, 'invasao', 'Defesa do corredor central')) return;
+    }
+    if (!secureInvasionRoute(camp, route)) return;
+    save();
+    refresh();
+    await say(null, ['Passagem pronta. Vá até o mercado ou a Academia e leve um grupo por vez ao posto de socorro.']);
+    return;
+  }
+
+  const pickup = GROUP_IDS.find(group => INVASION_GROUPS[group].point.id === id);
+  if (pickup) {
+    const { point, checkpoint } = INVASION_GROUPS[pickup];
+    const choice = await say({ name: point.label }, [
+      pickup === 'mercado' ? 'Fechamos as bancas e estamos juntos. Por onde vamos sair?'
+        : 'Reunimos quem estava na escadaria. Estamos prontos para acompanhar você.',
+      `Primeira parada · ${checkpoint[route].label}. Dali, sigam para o posto de socorro.`,
+    ], [{ id: 'escoltar', label: 'Começar a escolta' }, { id: 'depois', label: 'Voltar para buscar o grupo depois' }]);
+    if (choice !== 'escoltar' || !startEvacuation(camp, pickup)) return;
+    escortTrail = [];
+    save();
+    refresh();
+    return;
+  }
+
+  const group = escortGroup(camp);
+  if (!group) return;
+  if (id === 'invasao-baliza' && reachEvacuationCheckpoint(camp, group)) {
+    save();
+    refresh();
+    await say({ name: INVASION_GROUPS[group].point.label }, ['Todo mundo passou pela baliza. Vamos juntos até o posto de socorro.']);
+  }
+  if (id === 'invasao-abrigo' && rescueEvacuationGroup(camp, group)) {
+    escortTrail = [];
+    save();
+    refresh();
+    await say({ name: 'Posto de socorro' }, [
+      evacuationCount(camp) === GROUP_IDS.length
+        ? 'Os dois grupos estão aqui. Entregue o relatório à guarda da praça.'
+        : 'Este grupo está em segurança. O outro ainda espera pela escolta.',
+    ]);
+  }
+}
+
 async function useSpot(id: string) {
   if (!c) return;
+  if (id === VALE_REPORT.id && c.map === 'rua' && valleyReportPending(c)) {
+    await reportValley(c);
+    return;
+  }
+  const chapter = classicChapter(c);
+  if (chapter?.id === 'invasao' && c.map === 'rua' && id.startsWith('invasao-') && chapterSpots(c, chapter).some(spot => spot.id === id)) {
+    await evacuateInvasion(c, id);
+    return;
+  }
+  if (chapter?.id === 'akatsuki' && c.map === 'rua' && id.startsWith('akatsuki-') && chapterSpots(c, chapter).some(spot => spot.id === id)) {
+    await investigateAkatsuki(c, id);
+    return;
+  }
+  if (chapter?.id === 'som' && c.map === 'floresta' && id.startsWith('resgate-') && chapterSpots(c, chapter).some(spot => spot.id === id)) {
+    await investigateRescue(c, id);
+    return;
+  }
+  if (chapter?.id === 'vale' && c.map === 'vale' && (id === VALE_LOOKOUT.id || id === VALE_REST.id)
+      && chapterSpots(c, chapter).some(spot => spot.id === id)) {
+    await visitValley(c, id);
+    return;
+  }
+  if (chapter?.area === 'suna' && c.map === 'suna' && id.startsWith('suna-') && chapterSpots(c, chapter).some(spot => spot.id === id)) {
+    await visitSuna(c, id);
+    return;
+  }
+  if (chapter?.area === c.map && pendingWaveStops(c, chapter.id).some(stop => stop.id === id)) {
+    await investigateWaves(c, id);
+    return;
+  }
+  if (chapter?.area === 'floresta' && c.map === 'floresta') {
+    const routes = ['norte', 'sul'] as const;
+    const route = routes.find(path => FOREST_ROUTES[path].scout.id === id);
+    if (chapter.id === 'ceu' && route && !forestRoute(c)) {
+      await scoutForestRoute(c, route);
+      return;
+    }
+    const cache = routes.find(path => FOREST_ROUTES[path].cache.id === id);
+    if (chapter.id === 'terra' && cache && findSpareScroll(c, cache)) {
+      save();
+      refresh();
+      await say(null, [cache === 'norte'
+        ? 'A marca no tronco aponta para um pergaminho avulso atrás da casca. O selo também é do Céu. Pode servir numa troca.'
+        : 'A bolsa presa entre as pedras tem um segundo pergaminho do Céu. O selo está seco e inteiro. Pode servir numa troca.']);
+      return;
+    }
+  }
+  if (chapter?.area === c.map && id === `classico-${chapter.id}` && chapterSpots(c, chapter).some(spot => spot.id === id)) {
+    await playChapter(c, chapter);
+    return;
+  }
+  if (id === ROAD_TRACKS.id && followRoadTracks(c)) {
+    save();
+    await say(null, ['As rodas saíram do caminho junto ao riacho. As marcas apontam de volta para a mata, longe da ponte.', 'Sua equipe anota o desvio. Cruze a ponte e encontre um lugar para passar a noite.']);
+    return;
+  }
+  if (id === ROAD_CAMP.id && reachRoadCamp(c)) {
+    save();
+    await say(null, ['A equipe escolhe um ponto alto para o acampamento. Daqui dá para vigiar a ponte sem expor a fogueira.', 'O barco de Tazuna está amarrado perto daqui. Examine o ponto de partida quando estiver pronto.']);
+    return;
+  }
   if (geninStage(c) === 'suprimentos') {
     const index = SUPPLIES.findIndex((supply) => supply.id === id);
     if (index >= 0) {
@@ -1222,7 +2227,7 @@ function soloTrainingSlots(cc: Campaign): number {
 }
 
 async function prepareSoloTraining(camp: Campaign): Promise<boolean> {
-  if (camp.period === 0 && camp.rank === 'Genin' && academyMorning(camp) === 'free') {
+  if (camp.period === 0 && camp.rank !== 'Estudante da Academia' && academyMorning(camp) === 'free') {
     await offerAfternoon(['O Campo está livre. Quer passar para a tarde para começar a treinar?']);
     return soloTrainingSlots(camp) > 0;
   }
@@ -1301,6 +2306,27 @@ function yukiHint(camp: Campaign): string {
 async function meditationSpot() {
   if (!c) return;
   const camp = c;
+  const ocular = ocularTrial(camp);
+  if (ocular && !ocular.story) {
+    const choice = await say(null, ['A superfície da água reflete o movimento das folhas. É um bom lugar para treinar a percepção.'], [
+      { id: 'meditar', label: 'Meditar · Controle de chakra e Chakra' },
+      { id: 'linhagem', label: `Prova de linhagem · ${ocular.technique.name}` },
+      { id: 'nao', label: 'Agora não' },
+    ]);
+    if (choice === 'meditar') { await trainSpot('meditacao'); return; }
+    if (choice !== 'linhagem') return;
+    if (ocular.missing.length) { await say(null, [`Melhore ${ocular.missing.join(' e ')} para tentar a prova.`]); return; }
+    if (!await prepareSoloTraining(camp)) return;
+    if (camp.chakra < 6) { await say(null, ['A prova exige 6 CH. Medite primeiro para recuperar chakra.']); return; }
+    const score = await runMini(new JutsuPracticeGame(ocular.technique, playerActor(), seededRand(), 0.6), true);
+    if (score === null) return;
+    camp.chakra -= 6;
+    const learned = awakenOcular(camp, score);
+    afterAction(true);
+    save();
+    await say(null, [learned ? `Você despertou ${ocular.technique.name}. Pratique no posto de jutsus para melhorar o domínio.` : 'A visão perdeu o foco. Você pode tentar novamente com 6 CH e uma ação.']);
+    return;
+  }
   const trial = yukiTrial(camp);
   if (trial.state === 'other' || trial.state === 'known') { await trainSpot('meditacao'); return; }
   if (!await prepareSoloTraining(camp)) return;
@@ -1395,6 +2421,9 @@ function playerFighter() {
   }, 0);
 }
 function npcFighter(id: string) {
+  const opponent = STORY_OPPONENTS[id];
+  if (opponent) return makeFighter({ id, name: opponent.name, role: 'player', look: opponent.look,
+    stats: { ...baseStats(3), ...opponent.stats }, jutsus: opponent.techniques ?? {}, power: POWER[c!.settings.difficulty] }, 1);
   const d = CHARACTERS[id], n = c!.npcs[id];
   const techniques = { ...n.jutsus };
   if (c!.era === 'classico' && id === 'sasuke') techniques.gokakyu = 70;
@@ -1403,18 +2432,35 @@ function npcFighter(id: string) {
     items: id === 'rock-lee' ? { kunai: 0, shuriken: 0 } : undefined, personality: d.personality, power: POWER[c!.settings.difficulty] }, 1);
 }
 
-async function runBattle(id: string, title: string, patrol?: { tactic?: Tactic }) {
+async function runBattle(id: string, title: string, patrol?: { tactic?: Tactic; affinity?: number; extraFatigue?: number }) {
   if (!c) return null;
   busy = true; held.clear();
   const seed = (c.rng ^ (c.day * 7919) ^ c.wins * 31) >>> 0;
   const opponent = npcFighter(id);
-  if (patrol?.tactic === 'distracao') opponent.stamina = Math.max(1, opponent.stamina - 8);
+  if (id === 'sasuke' && patrol && c.map === 'vale') opponent.id = 'sasuke-vale';
+  if (patrol) opponent.stamina = Math.max(1, opponent.stamina - (patrol.tactic === 'distracao' ? 8 : 0)
+    - (patrol.affinity ?? 0) * 5 - (patrol.extraFatigue ?? 0));
   const distance = patrol?.tactic === 'rastreio' ? 2 : patrol?.tactic === 'bloqueio' ? 0 : 1;
   const battle = startBattle(playerFighter(), opponent, seed, distance);
-  const m = map(), focus = { x: c.x, y: c.y };
+  const m = map();
+  const onBridge = m.id === 'ondas' && id === 'zabuza';
+  const inArena = m.id === 'arena';
+  const atServiceGate = m.id === 'suna' && id === 'gaara';
+  const focus = onBridge ? { x: VILLAGE_DECK.x, y: VILLAGE_ZABUZA.y }
+    : inArena ? ARENA_RING : atServiceGate ? SUNA_SERVICE_GATE : { x: c.x, y: c.y };
+  const maxGroundY = onBridge || inArena || atServiceGate ? focus.y : undefined;
   const scene = new BattleScene({
-    battle, title, training: !patrol, actors: [playerActor(), actorFor(id)],
-    background: (bg, w, h) => paintWorld(bg, m, { x: Math.max(0, Math.min(m.w - w, focus.x - w / 2)), y: Math.max(0, Math.min(m.h - h, focus.y - h * 0.7)) }, w, h, [], c!.period),
+    battle, title, training: !patrol, actors: [playerActor(), STORY_OPPONENTS[id] ? { role: 'player', look: STORY_OPPONENTS[id].look } : actorFor(id)],
+    maxGroundY,
+    background: (bg, w, h) => {
+      const x = (m.id === 'vale' || inArena) && w > m.w
+        ? (m.w - w) / 2 : Math.max(0, Math.min(m.w - w, focus.x - w / 2));
+      // No Vale, os pés durante o duelo ficam sobre a travessia.
+      const ground = maxGroundY === undefined ? h * 0.7 : Math.min(Math.round(h * 0.7), maxGroundY);
+      const y = m.id === 'vale'
+        ? VALLEY_ENTRY.y - ground : Math.max(0, Math.min(m.h - h, focus.y - ground));
+      paintWorld(bg, m, { x, y }, w, h, [], c!.period);
+    },
   }, $('battle'));
   battleScene = scene;
   audio.track('luta');
@@ -1472,10 +2518,11 @@ async function spar(n: Npc) {
   if (c.npcs[n.id].sparredDay === c.day) { await say(who, ['Hoje já chega de luta. Amanhã de novo.']); return; }
   if (c.stamina < 8) { await say(who, ['Você está acabado. Descansa primeiro, depois a gente luta.']); return; }
   await say(who, [SPAR_LINES[n.id]?.[0] ?? 'Vamos lá.']);
-  c.npcs[n.id].sparredDay = c.day;
   const won = await runBattle(n.id, 'Treino de luta');
-  await say(who, [won ? SPAR_LINES[n.id]?.[1] ?? 'Bom treino.' : SPAR_LINES[n.id]?.[2] ?? 'Bom treino.']);
+  c.npcs[n.id].sparredDay = c.day;
   if (c.period === 1) afterAction();
+  save();
+  await say(who, [won ? SPAR_LINES[n.id]?.[1] ?? 'Bom treino.' : SPAR_LINES[n.id]?.[2] ?? 'Bom treino.']);
 }
 
 // ——— Aulas ———
@@ -1484,7 +2531,7 @@ async function academyDoor() {
   if (c.quest === 'matricula-ficha' || c.quest === 'matricula-entrega') { await say(null, ['A porta está fechada. Primeiro a matrícula: fale com Iruka em frente à escadaria.']); return; }
   if (c.period !== 0) { await say(null, ['As salas estão vazias a esta hora. A aula é de manhã.']); return; }
   if (c.lessonsDone.includes(c.day)) { await say(null, ['A aula de hoje já terminou.']); return; }
-  if (c.rank === 'Genin') { await say(null, ['Você já se formou. A Academia agora é passado, e as missões são o futuro.']); return; }
+  if (c.rank !== 'Estudante da Academia') { await say(null, ['Você já se formou. A Academia agora é passado, e as missões são o futuro.']); return; }
   const session = academyMorning(c);
   if (session === 'exam') { await runExam(); return; }
   const lesson = todayLesson(c);
@@ -1536,10 +2583,11 @@ async function runLesson(lesson: typeof LESSONS[number], makeup = false) {
   bond(c, 'iruka', { respeito: score > 0.6 ? 3 : 1 });
   const parts = [lesson.teaches ? `Você aprendeu ${JUTSUS[lesson.teaches].name} (domínio ${Math.round(c.jutsus[lesson.teaches])}%).` : '', res.gains.length ? `Evolução: ${res.gains.map((x) => `${x.stat} +${x.points}`).join(', ')}.` : ''].filter(Boolean);
   addLog(c, `Aula: ${lesson.title} (${Math.round(score * 100)} pontos). ${parts.join(' ')}`);
-  await say(iruka, [score > 0.7 ? 'Muito bem! Foi um dos melhores da turma hoje.' : score > 0.45 ? 'Nada mal. Treine à tarde para fixar.' : 'Precisa praticar mais. O Campo de Treino fica aberto à tarde.', ...(parts.length ? [parts.join(' ')] : []), 'Dispensados! Até amanhã.']);
-  lessonMode = false;
   if (!makeup) startAfternoon(c);
   else if (c.period === 1) spendAction(c);
+  save();
+  await say(iruka, [score > 0.7 ? 'Muito bem! Foi um dos melhores da turma hoje.' : score > 0.45 ? 'Nada mal. Treine à tarde para fixar.' : 'Precisa praticar mais. O Campo de Treino fica aberto à tarde.', ...(parts.length ? [parts.join(' ')] : []), 'Dispensados! Até amanhã.']);
+  lessonMode = false;
   enterMap('rua', 450, 204, 'down');
   if (!makeup) toast('Tarde livre. O Campo de Treino fica a oeste, seguindo a rua.');
 }
@@ -1573,6 +2621,8 @@ async function runExam() {
     c.reputation += 10; c.xp += 150;
     bond(c, 'iruka', { respeito: 10, confianca: 5 }, `Formou ${c.profile.name} como genin.`);
     addLog(c, `Exame de graduação: aprovado com ${points}/100. ${c.profile.name} agora é Genin.`);
+    startAfternoon(c);
+    save();
     await say(iruka, [
       mastery >= 60 ? 'Três clones firmes do primeiro ao último. Excelente.' : 'Os clones ficaram de pé. Vamos à nota.',
       report,
@@ -1586,6 +2636,8 @@ async function runExam() {
     c.flags['exame:player'] = 'reprovado';
     c.flags.repescagem = c.day + 3;
     addLog(c, `Exame de graduação: reprovado com ${points}/100. Repescagem marcada em três dias.`);
+    startAfternoon(c);
+    save();
     await say(iruka, [
       mastery === 0 ? 'Você ainda não aprendeu o Bunshin. Sem ele não tenho como aprovar.' : 'O clone desfez antes de ficar de pé. Sinto muito, mas não posso aprovar assim.',
       report,
@@ -1593,7 +2645,6 @@ async function runExam() {
     ]);
   }
   lessonMode = false;
-  startAfternoon(c);
   enterMap('rua', 450, 204, 'down');
   refresh();
 }
@@ -1655,6 +2706,7 @@ async function endDay() {
     const p = e.prompt?.(c);
     const choice = p ? await say({ name: p.speaker, actor: p.role ? actorFor(p.role) : undefined }, p.lines, p.choices) : undefined;
     const news = resolveEvent(c, e, choice);
+    save();
     if (news) await say(null, [news]);
   }
   busy = true;
@@ -1721,11 +2773,22 @@ function update(dt: number) {
       const exit = m.exits.find((e) => c!.x >= e.rect.x && c!.x <= e.rect.x + e.rect.w && c!.y >= e.rect.y && c!.y <= e.rect.y + e.rect.h);
       if (exit) {
         if (exit.to === 'campo' && c.quest.startsWith('matricula')) { c.x = x0; c.y = y0; toast('Primeiro a matrícula: a ficha está no quadro de avisos.'); }
-        else enterMap(exit.to, exit.arrive.x, exit.arrive.y, exit.arrive.dir);
+        else {
+          if (c.map === 'rua' && narutoSafety(c) === 'escolta') toast('Naruto espera na Rua da Academia. Volte para continuar a escolta.');
+          enterMap(exit.to, exit.arrive.x, exit.arrive.y, exit.arrive.dir);
+        }
       }
     }
   }
   walkFrame = moved ? Math.floor(phase) % 4 : -1;
+  if ((c.map === 'rua' && (escortGroup(c) || narutoSafety(c) === 'escolta'))
+      || (c.map === 'floresta' && c.flags['resgate-aliado'] && classicChapter(c)?.id === 'som')) {
+    const lastPoint = escortTrail[0];
+    if (!lastPoint || Math.hypot(c.x - lastPoint.x, c.y - lastPoint.y) >= 3) {
+      escortTrail.unshift({ x: c.x, y: c.y, dir: c.dir });
+      if (escortTrail.length > 16) escortTrail.length = 16;
+    }
+  }
   moveNpcs(dt);
   const next = busy ? null : nearestContact();
   const key = (x: typeof contact) => (x ? (x.kind === 'npc' ? 'n' + x.npc.id : 's' + x.id) : '');
@@ -1778,18 +2841,151 @@ function paint() {
   if (!c) return;
   const m = map();
   const actors = npcs.map((n) => ({ y: n.y, draw: () => drawActor(g, n.x, n.y, n.actor, n.dir, n.frame < 0 ? idlePose(clock, n.x * 0.017, calm.matches) : n.frame) }));
-  for (const spot of missionSpots()) actors.push({ y: spot.y, draw: () => drawMissionSpot(spot) });
+  const drawFollower = (id: string) => {
+    const point = escortTrail[Math.min(7, escortTrail.length - 1)] ?? c!;
+    const x = point.x - (escortTrail.length <= 7 ? 11 : 0);
+    actors.push({ y: point.y, draw: () => drawActor(g, x, point.y, actorFor(id), point.dir, walkFrame) });
+  };
+  const spots = missionSpots();
+  for (const spot of spots) actors.push({ y: spot.y, draw: () => drawMissionSpot(spot) });
+  if (c.map === 'ondas') {
+    for (const { id, x, y } of spots) {
+      const actor = WAVES_ACTORS[id];
+      if (actor) actors.push({ y, draw: () => drawActor(g, x, y, actor, 'down', idlePose(clock, x * 0.017, calm.matches)) });
+    }
+  }
+  if (c.map === 'arena') {
+    for (const { id, x, y } of spots) {
+      const actor: Actor | undefined = id === 'classico-preliminar'
+        ? actorFor(preliminaryRival(c))
+        : id === 'classico-final' ? { role: 'player', look: STORY_OPPONENTS.gaara.look } : undefined;
+      if (actor) actors.push({ y, draw: () => drawActor(g, x, y, actor, 'down', idlePose(clock, x * 0.017, calm.matches)) });
+    }
+  }
+  if (c.map === 'suna') {
+    for (const { id, x, y } of [...SUNA_GUARDS, ...spots.filter(spot => !SUNA_GUARDS.some(guard => guard.id === spot.id))]) {
+      const actor = SUNA_ACTORS[id];
+      if (actor) actors.push({ y, draw: () => drawActor(g, x, y, actor, 'down', idlePose(clock, x * 0.017, calm.matches)) });
+    }
+  }
+  const chapter = classicChapter(c);
+  if (c.map === 'rua' && chapter?.id === 'invasao') {
+    const active = escortGroup(c);
+    for (const group of GROUP_IDS) {
+      if (groupSafe(c, group)) continue;
+      const waiting = INVASION_GROUPS[group].point;
+      EVACUATION_ACTORS[group].forEach((actor, index) => {
+        const follow = group === active && escortTrail.length > 0;
+        const lag = 8 + index * 6;
+        const point = follow ? escortTrail[Math.min(lag, escortTrail.length - 1)] : waiting;
+        const separated = follow && escortTrail.length > lag;
+        const dir = 'dir' in point ? point.dir : 'down';
+        const x = point.x + (separated && (dir === 'left' || dir === 'right') ? 0 : index ? 7 : -7);
+        const y = point.y + (separated ? 0 : index ? -3 : 3);
+        actors.push({ y, draw: () => drawActor(g, x, y, actor, dir, follow ? walkFrame : -1) });
+      });
+    }
+  }
+  if (c.map === 'rua' && chapter?.id === 'akatsuki') {
+    for (const spot of spots) {
+      const actor = akatsukiActor(c, spot.id);
+      if (actor) actors.push({ y: spot.y, draw: () => drawActor(g, spot.x, spot.y, actor, 'down', idlePose(clock, spot.x * 0.017, calm.matches)) });
+    }
+    const safety = narutoSafety(c);
+    if (safety === 'escolta') {
+      drawFollower('naruto');
+    } else if (safety === 'seguro') {
+      const shelter = spots[0];
+      actors.push({ y: shelter.y + 7, draw: () => drawActor(g, shelter.x + 21, shelter.y + 7, actorFor('naruto'), 'down', -1) });
+    }
+  }
+  if (c.map === 'floresta' && chapter?.id === 'som') {
+    for (const spot of spots) {
+      const actor = rescueActor(c, spot.id);
+      if (actor) actors.push({ y: spot.y, draw: () => drawActor(g, spot.x, spot.y, actor, 'down', idlePose(clock, spot.x * 0.017, calm.matches)) });
+    }
+    const guide = rescueGuide(c);
+    if (guide) drawFollower(guide);
+  }
+  if (c.map === 'vale' || (c.map === 'rua' && valleyReportPending(c))) {
+    for (const spot of spots) {
+      const actor = valleyActor(c, spot.id);
+      if (actor) actors.push({ y: spot.y, draw: () => drawActor(g, spot.x, spot.y, actor, 'down', idlePose(clock, spot.x * 0.017, calm.matches)) });
+    }
+  }
   const me: Actor = { role: 'player', look: { ...c.profile }, bandana: c.rank !== 'Estudante da Academia' };
   actors.push({ y: c.y, draw: () => drawActor(g, c!.x, c!.y, me, c!.dir, walkFrame < 0 ? idlePose(clock, 0, calm.matches) : walkFrame, clock < gestureUntil) });
   paintWorld(g, m, camera, cv.width, cv.height, actors, c.period);
   if (contact && !busy) {
-    const [x, y] = contact.kind === 'npc' ? [contact.npc.x, contact.npc.y - (contact.npc.actor.role === 'iruka' || contact.npc.actor.role === 'gen' ? 52 : 46)] : (() => { const s = worldSpots().find((s2) => s2.id === (contact as { id: string }).id)!; return [s.x, s.y - 30]; })();
-    const bob = calm.matches ? 0 : Math.round(Math.sin(clock * 5));
-    px(g, x - 5, y + bob, 11, 7, '#5e4636'); px(g, x - 4, y + 1 + bob, 9, 5, '#f8e8b6'); px(g, x, y + 6 + bob, 2, 2, '#5e4636');
-    for (let i = 0; i < 3; i++) px(g, x - 2 + i * 2, y + 3 + bob, 1, 1, '#8b5036');
+    const activeContact = contact;
+    const spot = activeContact.kind === 'spot' ? worldSpots().find(item => item.id === activeContact.id) : undefined;
+    const marker = activeContact.kind === 'npc'
+      ? { x: activeContact.npc.x, y: activeContact.npc.y - (activeContact.npc.actor.role === 'iruka' || activeContact.npc.actor.role === 'gen' ? 52 : 46) }
+      : spot && { x: spot.x, y: spot.y - (isChapterActor(c, spot.id) ? 47 : spot.id.startsWith('invasao-grupo-') ? 42 : 30) };
+    if (marker) {
+      const { x, y } = marker;
+      const bob = calm.matches ? 0 : Math.round(Math.sin(clock * 5));
+      px(g, x - 5, y + bob, 11, 7, '#5e4636'); px(g, x - 4, y + 1 + bob, 9, 5, '#f8e8b6'); px(g, x, y + 6 + bob, 2, 2, '#5e4636');
+      for (let i = 0; i < 3; i++) px(g, x - 2 + i * 2, y + 3 + bob, 1, 1, '#8b5036');
+    }
   }
   g.setTransform(1, 0, 0, 1, 0, 0);
   drawQuestArrow();
+}
+
+const EVACUATION_ACTORS: Record<InvasionGroup, Actor[]> = {
+  mercado: [{ role: 'player', look: { skin: 'Oliva', hair: 'Prateado', cut: 'Curto', coat: 'Ameixa', outfit: 'Túnica cruzada' } },
+    { role: 'player', look: { skin: 'Bronzeada', hair: 'Castanho', cut: 'Coque', coat: 'Musgo', outfit: 'Túnica cruzada' } }],
+  academia: [{ role: 'player', look: { skin: 'Dourada', hair: 'Preto', cut: 'Preso', coat: 'Terracota', outfit: 'Jaqueta de treino' } },
+    { role: 'player', look: { skin: 'Clara', hair: 'Chocolate', cut: 'Franja', coat: 'Azul-claro', outfit: 'Traje leve' } }],
+};
+
+const SUNA_ACTORS: Partial<Record<string, Actor>> = {
+  'suna-guarda': { role: 'player', look: { skin: 'Bronzeada', hair: 'Castanho', cut: 'Curto', coat: 'Terracota', outfit: 'Colete de campo', scarf: 'Lenço curto', trim: 'Dourado' } },
+  'suna-vigia': { role: 'player', look: { skin: 'Morena', hair: 'Preto', cut: 'Trança', coat: 'Musgo', outfit: 'Túnica cruzada', scarf: 'Gola enrolada' } },
+  'suna-carta': { role: 'player', look: { skin: 'Oliva', hair: 'Loiro', cut: 'Preso', coat: 'Índigo', outfit: 'Capa curta', scarf: 'Lenço curto', trim: 'Azul' } },
+  'suna-enfermaria': { role: 'player', look: { skin: 'Dourada', hair: 'Castanho', cut: 'Coque', coat: 'Branco', outfit: 'Túnica cruzada', scarf: 'Sem cachecol', trim: 'Verde' } },
+  'classico-gaara': { role: 'player', look: STORY_OPPONENTS.gaara.look },
+  'classico-tsunade': { role: 'player', look: { skin: 'Clara', hair: 'Loiro', cut: 'Longo', coat: 'Folha', outfit: 'Capa curta', scarf: 'Sem cachecol' } },
+};
+
+const WAVES_ACTORS: Partial<Record<string, Actor>> = {
+  'classico-haku': { role: 'player', look: STORY_OPPONENTS.haku.look },
+  'classico-zabuza': { role: 'player', look: STORY_OPPONENTS.zabuza.look },
+  'ondas-guincho': { role: 'player', look: { skin: 'Morena', hair: 'Castanho', cut: 'Coque', coat: 'Terracota', outfit: 'Colete de campo', scarf: 'Lenço curto' } },
+  'ondas-tablado': { role: 'player', look: { skin: 'Bronzeada', hair: 'Chocolate', cut: 'Curto', coat: 'Musgo', outfit: 'Traje leve', scarf: 'Sem cachecol' } },
+};
+
+const ICHIRAKU_WITNESS: Actor = { role: 'player', look: {
+  skin: 'Oliva', hair: 'Prateado', cut: 'Curto', coat: 'Branco', outfit: 'Túnica cruzada', scarf: 'Sem cachecol', trim: 'Vermelho',
+} };
+const KISAME_ACTOR: Actor = { role: 'player', look: STORY_OPPONENTS.akatsuki.look };
+const RESCUE_SENTINEL_ACTOR: Actor = { role: 'player', look: STORY_OPPONENTS.som.look };
+
+function rescueActor(camp: Campaign, id: string): Actor | undefined {
+  if (id === RESCUE_BRIEFING.id || id === RESCUE_EXIT.id) return actorFor(senseiId(camp));
+  if (id === RESCUE_PATHS.sul.aid.id) return actorFor('maki');
+  if (id === 'resgate-sentinela') return RESCUE_SENTINEL_ACTOR;
+}
+
+function valleyActor(camp: Campaign, id: string): Actor | undefined {
+  if (id === VALE_LOOKOUT.id) return actorFor(valleyWitness(camp));
+  if (id === 'classico-vale') return actorFor('sasuke');
+  if (id === VALE_REPORT.id) return actorFor('iruka');
+}
+
+function akatsukiActor(camp: Campaign, spotId: string): Actor | undefined {
+  if (spotId === 'akatsuki-ichiraku') return ICHIRAKU_WITNESS;
+  if (spotId === 'akatsuki-kisame') return KISAME_ACTOR;
+  if (spotId === AKATSUKI_BRIEFING.id) return actorFor(senseiId(camp));
+  if (spotId === NARUTO_PICKUP.id) return actorFor('naruto');
+  if (spotId === 'akatsuki-maki' || spotId === 'classico-akatsuki' || spotId === AKATSUKI_ROUTES.becos.shelter.id
+      || spotId === AKATSUKI_ROUTES.cobertura.shelter.id) return actorFor('maki');
+}
+
+function isChapterActor(camp: Campaign, id: string) {
+  return id === 'classico-preliminar' || id === 'classico-final' || Object.hasOwn(SUNA_ACTORS, id) || Object.hasOwn(WAVES_ACTORS, id)
+    || !!akatsukiActor(camp, id) || !!rescueActor(camp, id) || !!valleyActor(camp, id);
 }
 
 // ——— Seta de objetivo ———
@@ -1797,11 +2993,36 @@ const EXIT_TO: Partial<Record<MapId, { x: number; y: number }>> = { campo: { x: 
 
 function questLocation(): MapGoal | null {
   if (!c || missionDeferred(c)) return null;
+  if (valleyReportPending(c)) return { map: 'rua', ...VALE_REPORT, lift: 47 };
+  const chapter = classicChapter(c);
+  if (chapter) {
+    if (chapter.area === c.map || chapter.area === 'rua') {
+      const stops = chapterSpots(c, chapter);
+      const multipleRoutes = chapter.id === 'ceu' && !forestRoute(c);
+      const multipleGroups = chapter.id === 'invasao' && stops.every(({ id }) => id.startsWith('invasao-grupo-'));
+      const multipleGuards = chapter.id === 'gaara' && stops.length > 1;
+      const multipleClues = chapter.id === 'akatsuki' && pendingAkatsukiClues(c).length > 1;
+      const rescueForks = chapter.id === 'som' && stops.length > 1 && !rescueRoute(c);
+      const stop = multipleRoutes || multipleGroups || multipleGuards || multipleClues || rescueForks
+        ? stops.reduce((nearest, candidate) => Math.hypot(candidate.x - c!.x, candidate.y - c!.y) < Math.hypot(nearest.x - c!.x, nearest.y - c!.y) ? candidate : nearest)
+        : stops[0];
+      const lift = stop?.id.startsWith('invasao-grupo-') ? 44 : stop && isChapterActor(c, stop.id) ? 47 : 17;
+      return { map: chapter.area, x: stop?.x ?? chapter.x, y: stop?.y ?? chapter.y, lift };
+    }
+    return { map: 'rua', x: 458, y: 222, lift: 50 };
+  }
+  if (c.flags['classico-final']) return null;
   let goal: MapGoal | null = null;
   const session = academyMorning(c);
   const lessonPending = c.period === 0 && (session === 'lesson' || session === 'exam');
   const stage = geninStage(c);
-  if (stage === 'suprimentos') {
+  if (stage === 'concluida') {
+    const trip = wavesStage(c);
+    if (c.map === 'estrada') {
+      if (trip === 'estrada') goal = { map: 'estrada', ...ROAD_TRACKS, lift: 16 };
+      if (trip === 'acampamento') goal = { map: 'estrada', ...ROAD_CAMP, lift: 16 };
+    } else if (trip !== 'pausa') goal = { map: 'rua', ...TAZUNA_SPOT, lift: 50 };
+  } else if (stage === 'suprimentos') {
     const spot = SUPPLIES.find(({ id }) => !c!.flags[id]);
     if (spot) {
       const ally = teamMembers(c)[SUPPLIES.indexOf(spot)];
@@ -1841,7 +3062,7 @@ function questTarget(): { x: number; y: number; lift: number } | null {
   if (goal.regional && (c.map === goal.map || (geninStage(c) !== 'busca' && c.map !== 'rua'))) return null;
   if (goal.map !== c.map) {
     if (c.map === 'rua' && goal.map === 'campo') return { x: 22, y: 248, lift: 18 };
-    const ex = EXIT_TO[c.map];
+    const ex = EXIT_TO[c.map] ?? (map().exits[0]?.to === 'rua' ? { x: 16, y: 160 } : undefined);
     return ex ? { x: ex.x, y: ex.y, lift: 18 } : null;
   }
   if (Math.hypot(c.x - goal.x, c.y - goal.y) < 30) return null;
@@ -1896,6 +3117,17 @@ const TABS: [Tab, string][] = [['ficha', 'Ficha'], ['tecnicas', 'Técnicas'], ['
 let tab: Tab = 'ficha';
 function el(tag: string, cls = '', text = '') { const e = document.createElement(tag); if (cls) e.className = cls; if (text) e.textContent = text; return e; }
 function row(a: string, b: string) { const r = el('div', 'row'); r.append(el('span', '', a), el('b', '', b)); return r; }
+function examScrollRow(label: string, status: string, kind: ExamScroll) {
+  const item = row(label, status);
+  const title = item.firstElementChild!;
+  title.classList.add('scroll-journal-label');
+  const icon = document.createElement('canvas');
+  icon.width = 34; icon.height = 22;
+  icon.setAttribute('aria-hidden', 'true');
+  drawExamScroll(icon.getContext('2d')!, 17, 18, kind);
+  title.prepend(icon);
+  return item;
+}
 function bar(v: number) { const b = el('div', 'bar-mini'); const i = el('i'); i.style.width = Math.max(0, Math.min(100, v)) + '%'; b.append(i); return b; }
 
 function openMenu() {
@@ -2008,10 +3240,17 @@ function renderMenu() {
       body.append(card);
     }
   } else if (tab === 'relacoes') {
+    const members = teamMembers(c);
     for (const id of ['iruka', ...CLASSMATES, ...GUY_TEAM, ...new Set(['guy', ...(geninStage(c) ? [senseiId(c)] : [])])]) {
       const n = c.npcs[id], d = CHARACTERS[id], card = el('div', 'card');
       card.append(row(d.name + (d.original ? ' (original)' : ''), bondLabel(n.bond)),
         el('p', 'muted', `Amizade ${n.bond.amizade} · Rivalidade ${n.bond.rivalidade} · Respeito ${n.bond.respeito} · Confiança ${n.bond.confianca}`));
+      if (members.includes(id) && n.alive) {
+        const affinity = supportAffinity(c, id);
+        card.append(el('p', '', affinity
+          ? `Apoio de equipe · Sinos +${affinity * 3} p.p. na faixa · Ronda −${affinity * 5} RES inicial da rival`
+          : 'Apoio de equipe · Bônus com 20 de confiança e 20 de amizade ou respeito. O próximo nível exige 45 em ambos.'));
+      }
       if (n.memory.length) card.append(el('p', 'muted', 'Lembra: ' + n.memory.slice(0, 3).join(' · ')));
       body.append(card);
     }
@@ -2026,12 +3265,66 @@ function renderMenu() {
     }
     const offer = pendingMission(c);
     if (offer) body.append(row(MISSION_OFFERS[offer].name, missionDeferred(c) ? 'Adiada' : 'Disponível'));
+    const evacuation = invasionRoute(c);
+    if (evacuation) {
+      body.append(row('Evacuação de Konoha', `${evacuationCount(c)}/${GROUP_IDS.length} · ${INVASION_ROUTES[evacuation].label}`));
+      for (const group of GROUP_IDS) body.append(row(INVASION_GROUPS[group].point.label, groupSafe(c, group)
+        ? 'No posto de socorro' : escortGroup(c) === group ? 'Em escolta' : 'Aguardando'));
+    }
+    const chapter = classicChapter(c);
+    if (chapter?.id === 'gaara') {
+      const pending = pendingSunaGuards(c);
+      for (const guard of SUNA_GUARDS) body.append(row(guard.label, pending.some(({ id }) => id === guard.id) ? 'A consultar' : 'Consultado'));
+    }
+    const gaara = c.flags['classico-gaara'];
+    if (gaara) body.append(row('Fronteira da Areia', gaara === 'acordo' ? 'Acordo com Gaara' : 'Passagem liberada após o duelo'));
+    if (chapter?.id === 'tsunade') body.append(row(sunaLead(c).label, sunaLeadReady(c) ? 'Pista obtida · Casa de chá' : 'A visitar'));
+    if (chapter?.id === 'akatsuki') {
+      for (const clue of AKATSUKI_CLUES) body.append(row(clue.label, c.flags[clue.id] ? 'Pista registrada' : 'A consultar'));
+      const route = akatsukiRoute(c);
+      if (route) {
+        const status = { aguardando: 'Aguardando a retirada', escolta: 'Em escolta', seguro: 'Com a guarda' };
+        body.append(row('Plano de retirada', AKATSUKI_ROUTES[route].label), row('Naruto', status[narutoSafety(c)]));
+      }
+    } else {
+      const result = c.flags['classico-akatsuki'];
+      if (result === 'becos' || result === 'cobertura') body.append(row('Visitantes ao anoitecer', AKATSUKI_ROUTES[result].label));
+    }
+    const rescue = rescueRoute(c);
+    if (chapter?.id === 'som') {
+      const guide = rescueGuide(c);
+      if (c.flags['resgate-equipe']) body.append(row('Companhia na busca', guide ? CHARACTERS[guide].name : 'Você segue na frente'));
+      if (rescue) body.append(row('Rota de resgate', FOREST_ROUTES[rescue].label));
+      if (c.flags['resgate-rastro']) body.append(row('Rastro do Som', 'Confirmado'));
+      if (c.flags['resgate-preparo']) body.append(row('Aproximação', 'Sentinela distraído · −8 RES no duelo'));
+      if (c.flags['resgate-sentinela']) body.append(row('Sentinela do Quarteto', 'Caminho liberado'));
+    } else if (rescue && c.flags['classico-som']) body.append(row('Equipe de resgate', FOREST_ROUTES[rescue].label));
+    const ending = valleyEnding(c);
+    if (ending) {
+      body.append(row('Vale do Fim', VALE_ENDINGS[ending]));
+      if (valleyReportPending(c)) body.append(row('Relato à Academia', 'Pendente'));
+      if (c.flags['vale-relato-entregue']) body.append(row('Relato à Academia', 'Entregue'));
+    }
+    const written = c.flags['chunin-escrita-melhor'];
+    if (typeof written === 'number') body.append(row('Prova escrita Chūnin',
+      `${written}/${WRITTEN_QUESTIONS} · ${writtenPassed(c) ? 'Aprovada' : 'Pode refazer'}`));
+    const forest = forestRoute(c);
+    if (forest) body.append(row('Rota da Floresta da Morte', FOREST_ROUTES[forest].label));
+    const scrolls = forestScrollStatus(c);
+    if (scrolls) {
+      const status = { 'em-posse': 'Em posse', entregue: 'Entregue à torre' };
+      const earthMethod = c.flags['chunin-floresta-terra'] === 'troca' ? ' · obtido em troca'
+        : c.flags['chunin-floresta-terra'] === 'duelo' ? ' · obtido em duelo' : '';
+      body.append(examScrollRow('Pergaminho do Céu', scrolls.heaven === 'pendente' ? 'A recuperar' : status[scrolls.heaven], 'ceu'),
+        examScrollRow('Pergaminho da Terra', scrolls.earth === 'pendente' ? 'A obter' : status[scrolls.earth] + earthMethod, 'terra'));
+      if (scrolls.spare) body.append(examScrollRow('Pergaminho do Céu avulso', scrolls.spare === 'trocado' ? 'Usado na troca' : 'Em posse', 'reserva'));
+    }
     const ol = el('ol', 'log');
     for (const l of c.log.slice(0, 60)) ol.append(el('li', '', `Dia ${l.day} · ${l.text}`));
     body.append(ol);
   } else if (tab === 'calendario') {
     body.append(row('Hoje', `Dia ${c.day} · ${WEEKDAYS[(c.day - 1) % 7]} · ${PERIODS[c.period]}`));
-    if (c.rank === 'Genin' && c.period === 0) {
+    if (c.rank !== 'Estudante da Academia' && c.period === 0) {
       const afternoon = el('button', 'ghost', 'Avançar para a tarde') as HTMLButtonElement;
       afternoon.onclick = () => { if (advanceToAfternoon()) $<HTMLDialogElement>('menu').close(); };
       const actions = el('div', 'agenda-actions');

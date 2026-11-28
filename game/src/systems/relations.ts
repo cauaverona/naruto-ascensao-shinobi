@@ -18,6 +18,7 @@ export function remembers(c: Campaign, id: string, memory: string): boolean {
 }
 
 export function bondLabel(b: Bond): string {
+  if (teamAffinity(b) === 2) return 'Laço forte';
   if (b.rivalidade >= 30 && b.respeito >= 20) return 'Rival respeitado';
   if (b.amizade >= 45) return 'Amigo próximo';
   if (b.amizade >= 20) return 'Amigo';
@@ -25,4 +26,11 @@ export function bondLabel(b: Bond): string {
   if (b.amizade <= -20) return 'Desafeto';
   if (b.amizade > 0 || b.respeito > 0) return 'Colega';
   return 'Desconhecido';
+}
+
+export function teamAffinity(b: Bond | undefined): 0 | 1 | 2 {
+  if (!b) return 0;
+  if (b.confianca >= 45 && Math.max(b.amizade, b.respeito) >= 45) return 2;
+  if (b.confianca >= 20 && Math.max(b.amizade, b.respeito) >= 20) return 1;
+  return 0;
 }

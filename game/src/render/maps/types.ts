@@ -17,6 +17,7 @@ export interface GameMap {
   things: Thing[];
   walls: Rect[];
   bounds: Rect;
+  walkable?(x: number, y: number): boolean;
   spots: Spot[];
   exits: Exit[];
   lights: Light[];
@@ -30,6 +31,7 @@ export interface GameMap {
 export function blocked(m: GameMap, x: number, y: number): boolean {
   const b = m.bounds;
   if (x < b.x || x > b.x + b.w || y < b.y || y > b.y + b.h) return true;
+  if (m.walkable && !m.walkable(x, y)) return true;
   return m.walls.some((w) => x > w.x - 3 && x < w.x + w.w + 3 && y > w.y - 1 && y < w.y + w.h + 1);
 }
 

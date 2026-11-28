@@ -26,3 +26,23 @@ export function awakenHyoton(c: Campaign, score: number): boolean {
   return true;
 }
 
+export function ocularTrial(c: Campaign) {
+  const lineage = clanByName(c.profile.clan).hereditary;
+  if (lineage !== 'sharingan' && lineage !== 'byakugan') return;
+  const technique = JUTSUS[lineage === 'sharingan' ? 'sharingan-leitura' : 'juken-inicial'];
+  if (Object.hasOwn(c.jutsus, technique.id)) return;
+  const chapter = Number(c.flags['classico-capitulo'] ?? 0);
+  const story = c.era !== 'classico' || chapter < (lineage === 'sharingan' ? 11 : 8);
+  const missing = Object.entries(technique.requirements)
+    .filter(([stat, minimum]) => c.stats[stat as Stat] < minimum)
+    .map(([stat, minimum]) => `${stat} ${c.stats[stat as Stat]}/${minimum}`);
+  return { technique, story, missing };
+}
+
+export function awakenOcular(c: Campaign, score: number) {
+  const trial = ocularTrial(c);
+  if (!trial || trial.story || trial.missing.length || !Number.isFinite(score) || score < 0.6 || score > 1) return false;
+  learn(c, trial.technique.id, 30);
+  addLog(c, `Despertou ${trial.technique.name} na Pedra de meditação.`);
+  return true;
+}
